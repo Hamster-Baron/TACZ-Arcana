@@ -1,0 +1,38 @@
+base {
+    archivesName = mod_id + "-common"
+}
+
+mixin {
+    add sourceSets.main, "${mod_id}.common.refmap.json"
+
+    config "${mod_id}.common.mixins.json"
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    compileOnly "thedarkcolour:kotlinforforge:4.12.0"
+    compileOnly("com.charleskorn.kaml:kaml:0.104.0")
+    compileOnly "com.ezylang:EvalEx:3.6.0"
+    compileOnly fg.deobf(rootProject.ext.tacz_dependency)
+
+    annotationProcessor "org.spongepowered:mixin:0.8.5:processor"
+
+}
+
+tasks.named("processResources", ProcessResources).configure {
+    var replaceProperties = [minecraft_version   : minecraft_version, minecraft_version_range: minecraft_version_range,
+                             forge_version       : forge_version, forge_version_range: forge_version_range,
+                             loader_version_range: loader_version_range,
+                             mod_id              : mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: version,
+                             mod_authors         : mod_authors, mod_description: mod_description,]
+
+    inputs.properties replaceProperties
+
+    filesMatching(["META-INF/mods.toml", "pack.mcmeta"]) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+tasks.named("jar", Jar).configure {
+}

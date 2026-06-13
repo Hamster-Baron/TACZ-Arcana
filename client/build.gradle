@@ -1,0 +1,56 @@
+base {
+    archivesName = mod_id + "-client"
+}
+
+mixin {
+    add sourceSets.main, "${mod_id}.client.refmap.json"
+
+    config "${mod_id}.common.mixins.json"
+    config "${mod_id}.client.mixins.json"
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    compileOnly "thedarkcolour:kotlinforforge:4.12.0"
+    implementation project(":0common")
+    compileOnly fg.deobf(rootProject.ext.tacz_dependency)
+    compileOnly fg.deobf(fileTree("./lib"))
+
+    compileOnly fg.deobf("com.github.mcmodderanchor:simplebedrockmodel:2.2.2-forge-mc1.20.1")
+
+    compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:0.5.4"))
+
+    annotationProcessor "org.spongepowered:mixin:0.8.5:processor"
+
+}
+
+minecraft {
+    accessTransformer = file("src/main/resources/at.cfg")
+}
+
+tasks.named("processResources", ProcessResources).configure {
+    var replaceProperties = [minecraft_version   : minecraft_version, minecraft_version_range: minecraft_version_range,
+                             forge_version       : forge_version, forge_version_range: forge_version_range,
+                             loader_version_range: loader_version_range,
+                             mod_id              : mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: version,
+                             mod_authors         : mod_authors, mod_description: mod_description,]
+
+    inputs.properties replaceProperties
+
+    filesMatching(["META-INF/mods.toml", "pack.mcmeta"]) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+tasks.named("jar", Jar) {
+    dependsOn project(":0common").tasks.named("jar")
+    from zipTree(project(":0common").tasks.named("jar").get().archiveFile.get().asFile)
+}
+
+tasks.named("jarJar", Jar) {
+    dependsOn project(":0common").tasks.named("jar")
+    from zipTree(project(":0common").tasks.named("jar").get().archiveFile.get().asFile)
+
+    exclude("META-INF/*.kotlin_module")
+}

@@ -1,0 +1,209 @@
+plugins {
+    id "java"
+    id "idea"
+    id "net.minecraftforge.gradle" version "6.0.41" apply false
+    id "org.jetbrains.kotlin.jvm" version "2.2.21" apply false
+    id "org.jetbrains.kotlin.plugin.serialization" version "2.2.21" apply false
+    id "org.spongepowered.mixin" apply false
+    id "org.parchmentmc.librarian.forgegradle" version "1.+" apply false
+}
+
+group = "group.taczexpands"
+version = readVersion()
+ext.tacz_dependency = findProperty("tacz_dependency") ?: "curse.maven:timeless-and-classics-zero-1028108:8141310"
+
+subprojects {
+    apply plugin: "java"
+    apply plugin: "idea"
+    apply plugin: "net.minecraftforge.gradle"
+    apply plugin: "org.jetbrains.kotlin.jvm"
+    apply plugin: "org.jetbrains.kotlin.plugin.serialization"
+    apply plugin: "org.spongepowered.mixin"
+    apply plugin: "org.parchmentmc.librarian.forgegradle"
+
+    group = rootProject.group
+    version = rootProject.version
+
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(17)
+    }
+
+    minecraft {
+        mappings channel: mapping_channel, version: mapping_version
+        copyIdeResources = true
+    }
+
+    sourceSets.main.resources {
+        srcDir "src/generated/resources"
+    }
+
+    repositories {
+        mavenCentral()
+        mavenLocal()
+
+        maven {
+            name = "Curse Maven"
+            url = "https://cursemaven.com"
+            content { includeGroup "curse.maven" }
+        }
+
+        maven {
+            name = "Kotlin for Forge"
+            url = "https://thedarkcolour.github.io/KotlinForForge/"
+            content { includeGroup "thedarkcolour" }
+        }
+
+        maven {
+            url 'https://jitpack.io'
+            content {
+                includeGroup "com.github.mcmodderanchor"
+            }
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = "UTF-8"
+    }
+
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        compilerOptions {
+            freeCompilerArgs.addAll([
+                    "-Xno-call-assertions",
+                    "-Xno-receiver-assertions",
+                    "-Xno-param-assertions"
+            ])
+        }
+    }
+}
+
+def readVersion() {
+    def versionPropsFile = file("version.properties")
+    def properties = new Properties()
+
+    if (versionPropsFile.canRead()) {
+        properties.load(new FileInputStream(versionPropsFile))
+        def increment = properties["VERSION_INCREMENT"].toInteger()
+
+        return properties["VERSION_NAME"] + "." + increment
+    }
+}
+
+def addAndGetVersion() {
+    def versionPropsFile = file("version.properties")
+    def properties = new Properties()
+
+    if (versionPropsFile.canRead()) {
+        properties.load(new FileInputStream(versionPropsFile))
+        def increment = properties["VERSION_INCREMENT"].toInteger() + 1
+        properties["VERSION_INCREMENT"] = increment.toString()
+        properties.store(new FileOutputStream(versionPropsFile), null)
+
+        return properties["VERSION_NAME"] + "." + increment
+    }
+}
+
+static def getJarFile(Project subproject, String subprojectJarTaskName) {
+    return subproject.tasks.named(subprojectJarTaskName).get().archiveFile.get().asFile
+}
+
+tasks.register("buildAll", DefaultTask) {
+    group = "build"
+    description = "build all artifacts"
+
+    it.doLast {
+        project.version = addAndGetVersion()
+    }
+
+    dependsOn tasks.named("buildClientJar")
+    dependsOn tasks.named("buildServerJar")
+    dependsOn tasks.named("buildHybridJar")
+}
+
+
+tasks.register("buildClientJar", Jar) {
+    dependsOn project(":loader").tasks.named("jar")
+    dependsOn project(":client").tasks.named("jar")
+
+    archiveFileName = "${mod_id}-${version}-loader-client.jar"
+    destinationDirectory = layout.buildDirectory.dir("libs")
+
+    from zipTree(getJarFile(project(":loader"), "jar"))
+
+    (from getJarFile(project(":client"), "jar")) {
+        into "META-INF"
+        rename { "mod.jar" }
+    }
+}
+
+tasks.register("buildServerJar", Jar) {
+    dependsOn project(":loader").tasks.named("jar")
+    dependsOn project(":server").tasks.named("jarJar")
+
+    archiveFileName = "${mod_id}-${version}-loader-server.jar"
+    destinationDirectory = layout.buildDirectory.dir("libs")
+
+    from zipTree(getJarFile(project(":loader"), "jar"))
+
+    (from getJarFile(project(":server"), "jarJar")) {
+        into "META-INF"
+        rename { "mod.jar" }
+    }
+}
+
+tasks.register("buildHybridJar", Jar) {
+    dependsOn project(":loader").tasks.named("jar")
+    dependsOn project(":zHybrid").tasks.named("jar")
+
+    archiveFileName = "${mod_id}-${version}-loader-hybrid.jar"
+    destinationDirectory = layout.buildDirectory.dir("libs")
+
+    from zipTree(getJarFile(project(":loader"), "jar"))
+
+    (from getJarFile(project(":zHybrid"), "jar")) {
+        into "META-INF"
+        rename { "mod.jar" }
+    }
+}
+
+tasks.register("buildDebugHybridJar", Jar) {
+    dependsOn project(":loader").tasks.named("jar")
+    dependsOn project(":zHybrid").tasks.named("debugJar")
+
+    archiveFileName = "${mod_id}-${version}-loader-hybrid-debug.jar"
+    destinationDirectory = layout.buildDirectory.dir("libs")
+
+    from zipTree(getJarFile(project(":loader"), "jar"))
+
+    (from getJarFile(project(":zHybrid"), "debugJar")) {
+        into "META-INF"
+        rename { "mod.jar" }
+    }
+}
+
+tasks.register("buildWindowsDebugHybridJar", Jar) {
+    dependsOn project(":loader").tasks.named("jar")
+    dependsOn project(":zHybrid").tasks.named("winDebugJar")
+
+    archiveFileName = "${mod_id}-${version}-loader-hybrid-windows-debug.jar"
+    destinationDirectory = layout.buildDirectory.dir("libs")
+
+    from zipTree(getJarFile(project(":loader"), "jar"))
+
+    (from getJarFile(project(":zHybrid"), "winDebugJar")) {
+        into "META-INF"
+        rename { "mod.jar" }
+    }
+}
+
+tasks.jar {
+    enabled = false
+}
+
+
+allprojects {
+    tasks.configureEach {
+        if (it.name.toLowerCase().contains("compile")) {
+            it.outputs.upToDateWhen { false }
+        }
+    }
+}

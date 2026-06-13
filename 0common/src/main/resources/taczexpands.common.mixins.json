@@ -1,0 +1,41 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "group.taczexpands.common.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "taczexpands.common.refmap.json",
+  "mixins": [
+    "MixinAbstractGunItem",
+    "MixinAmmoIndexPOJO",
+    "MixinAttachmentData",
+    "MixinAttachmentDataUtils",
+    "MixinAttachmentIndexPOJO",
+    "MixinAttachmentItem",
+    "MixinAttachmentType",
+    "MixinBulletData",
+    "MixinCommonAssetsManager",
+    "MixinCommonAttachmentIndex",
+    "MixinCommonAttachmentIndexSerializer",
+    "MixinCommonGunIndex",
+    "MixinCommonNetworkCache",
+    "MixinDataType",
+    "MixinEntityKineticBullet",
+    "MixinGunData",
+    "MixinGunIndexPOJO",
+    "MixinInitOnlyModifiers",
+    "MixinLivingEntityAim",
+    "MixinLivingEntityDrawGun",
+    "MixinModCreativeTabs",
+    "MixinModernKineticGunItem",
+    "MixinModernKineticGunScriptAPI",
+    "MixinSoundManager",
+    "accessor.IAccessorAttachmentIndexPOJO",
+    "accessor.IAccessorCommonAssetsManager",
+    "accessor.IAccessorGunData"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

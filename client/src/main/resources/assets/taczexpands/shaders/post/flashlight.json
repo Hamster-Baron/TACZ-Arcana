@@ -1,0 +1,28 @@
+{
+  "targets": [
+    "swap",
+    "flashlight"
+  ],
+  "passes": [
+    {
+      "name": "taczexpands:flashlight",
+      "intarget": "minecraft:main",
+      "outtarget": "swap",
+      "auxtargets": [
+        {
+          "name": "DiffuseDepthSampler",
+          "id": "minecraft:main:depth"
+        },
+        {
+          "name": "FlashlightDepthSampler",
+          "id": "flashlight:depth"
+        }
+      ]
+    },
+    {
+      "name": "blit",
+      "intarget": "swap",
+      "outtarget": "minecraft:main"
+    }
+  ]
+}

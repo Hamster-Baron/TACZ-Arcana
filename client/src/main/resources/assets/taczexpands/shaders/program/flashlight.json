@@ -1,0 +1,32 @@
+{
+  "blend": {
+    "func": "add",
+    "srcrgb": "one",
+    "dstrgb": "zero"
+  },
+  "vertex": "taczexpands:flashlight",
+  "fragment": "taczexpands:flashlight",
+  "attributes": [ "Position" ],
+  "samplers": [
+    { "name": "DiffuseDepthSampler" },
+    { "name": "DiffuseSampler" },
+    { "name": "FlashlightDepthSampler" }
+  ],
+  "uniforms": [
+    { "name": "ProjMat",     "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "OutSize",     "type": "float",     "count": 2,  "values": [ 1.0, 1.0 ] },
+    { "name": "InvProjMat",     "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "InvModelViewMat",     "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "MainCameraToWorldMat",     "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "FlashlightProjMat",     "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "FlashlightModelViewMat",     "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "WorldOffset",    "type": "float", "count": 3, "values": [ 0.0, 0.0, 0.0 ] },
+    { "name": "ShadowPixelStep",    "type": "float", "count": 2, "values": [ 0.0, 0.0 ] },
+    { "name": "From",    "type": "float", "count": 3, "values": [ 0.0, 0.0, 0.0 ] },
+    { "name": "To",    "type": "float", "count": 3, "values": [ 0.0, 0.0, 0.0 ] },
+    { "name": "Angle",    "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Range",    "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Luminance",    "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "MinZ",    "type": "float", "count": 1, "values": [ 0.0 ] }
+  ]
+}

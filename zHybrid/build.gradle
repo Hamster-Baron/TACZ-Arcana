@@ -1,0 +1,64 @@
+base {
+    archivesName = mod_id + "-hybrid"
+}
+
+
+mixin {
+    config "${mod_id}.common.mixins.json"
+    config "${mod_id}.client.mixins.json"
+    config "${mod_id}.server.mixins.json"
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    compileOnly "thedarkcolour:kotlinforforge:4.12.0"
+    compileOnly("com.charleskorn.kaml:kaml:0.104.0")
+    compileOnly "com.ezylang:EvalEx:3.6.0"
+    compileOnly(project(":0common"))
+    compileOnly(project(":client"))
+    compileOnly(project(":server"))
+    compileOnly fg.deobf(fileTree("../client/lib"))
+    compileOnly fg.deobf(rootProject.ext.tacz_dependency)
+
+    annotationProcessor "org.spongepowered:mixin:0.8.5:processor"
+
+}
+
+tasks.named("processResources", ProcessResources).configure {
+    var replaceProperties = [minecraft_version   : minecraft_version, minecraft_version_range: minecraft_version_range,
+                             forge_version       : forge_version, forge_version_range: forge_version_range,
+                             loader_version_range: loader_version_range,
+                             mod_id              : mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: version,
+                             mod_authors         : mod_authors, mod_description: mod_description,]
+
+    inputs.properties replaceProperties
+
+    filesMatching(["META-INF/mods.toml", "pack.mcmeta"]) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+tasks.named("jar", Jar) {
+    dependsOn project(":server").tasks.named("reobfJarJar")
+    dependsOn project(":client").tasks.named("reobfJar")
+
+    from zipTree(project(":server").tasks.named("jarJar").get().archiveFile.get().asFile)
+    from zipTree(project(":client").tasks.named("jar").get().archiveFile.get().asFile)
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    exclude("META-INF/*.kotlin_module")
+}
+
+tasks.register("debugJar", Zip) {
+    dependsOn tasks.reobfJar
+    archiveFileName = "${mod_id}-${version}-hybrid-debug.jar"
+    from(zipTree(tasks.jar.archiveFile.get().asFile))
+}
+
+tasks.register("winDebugJar", Zip) {
+    dependsOn tasks.reobfJar
+    archiveFileName = "${mod_id}-${version}-hybrid-windows-debug.jar"
+    from(zipTree(tasks.jar.archiveFile.get().asFile))
+}

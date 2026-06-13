@@ -1,0 +1,96 @@
+base {
+    archivesName = mod_id + "-server"
+}
+
+mixin {
+    add sourceSets.main, "${mod_id}.server.refmap.json"
+
+    config "${mod_id}.common.mixins.json"
+    config "${mod_id}.server.mixins.json"
+
+}
+
+jarJar.enable()
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    compileOnly "thedarkcolour:kotlinforforge:4.12.0"
+    compileOnly("com.charleskorn.kaml:kaml:0.104.0")
+    compileOnly "com.ezylang:EvalEx:3.6.0"
+
+    compileOnly(fileTree("./lib"))
+
+    jarJar("com.charleskorn.kaml:kaml:[0.104.0,0.105.0)") {
+        jarJar.pin(it, "0.104.0")
+        exclude module: "kotlin-stdlib"
+        exclude module: "kotlinx-serialization-json"
+        exclude module: "kotlinx-serialization-core-jvm"
+        exclude module: "okio-jvm"
+    }
+    jarJar("com.ezylang:EvalEx:[3.6.0,3.7.0)") {
+        exclude module: "kotlin-stdlib"
+        exclude module: "kotlinx-serialization-json"
+        exclude module: "kotlinx-serialization-core-jvm"
+        exclude module: "okio-jvm"
+    }
+
+    jarJar("it.krzeminski:snakeyaml-engine-kmp:[4.0.1,4.0.2)") {
+        jarJar.pin(it, "4.0.1")
+        exclude module: "kotlin-stdlib"
+        exclude module: "kotlinx-serialization-json"
+        exclude module: "kotlinx-serialization-core-jvm"
+        exclude module: "okio-jvm"
+    }
+
+    jarJar("com.squareup.okio:okio:[3.16.4,3.16.5)") {
+        jarJar.pin(it, "3.16.4")
+        exclude module: "kotlin-stdlib"
+        exclude module: "kotlinx-serialization-json"
+        exclude module: "kotlinx-serialization-core-jvm"
+        exclude module: "okio-jvm"
+    }
+
+    jarJar("net.thauvin.erik.urlencoder:urlencoder-lib:[1.6.0,1.6.1)") {
+        jarJar.pin(it, "1.6.0")
+        exclude module: "kotlin-stdlib"
+        exclude module: "kotlinx-serialization-json"
+        exclude module: "kotlinx-serialization-core-jvm"
+        exclude module: "okio-jvm"
+    }
+
+    compileOnly project(":0common")
+    compileOnly project(":0server-bukkit")
+    compileOnly fg.deobf(rootProject.ext.tacz_dependency)
+
+    annotationProcessor "org.spongepowered:mixin:0.8.5:processor"
+}
+tasks.named("processResources", ProcessResources).configure {
+    var replaceProperties = [minecraft_version   : minecraft_version, minecraft_version_range: minecraft_version_range,
+                             forge_version       : forge_version, forge_version_range: forge_version_range,
+                             loader_version_range: loader_version_range,
+                             mod_id              : mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: version,
+                             mod_authors         : mod_authors, mod_description: mod_description,]
+
+    inputs.properties replaceProperties
+
+    filesMatching(["META-INF/mods.toml", "pack.mcmeta"]) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+tasks.named("jar", Jar) {
+    dependsOn project(":0common").tasks.named("jar")
+    dependsOn project(":0server-bukkit").tasks.named("jar")
+    from zipTree(project(":0common").tasks.named("jar").get().archiveFile.get().asFile)
+    from zipTree(project(":0server-bukkit").tasks.named("jar").get().archiveFile.get().asFile)
+}
+
+tasks.named("jarJar", Jar) {
+    dependsOn project(":0common").tasks.named("jar")
+    dependsOn project(":0server-bukkit").tasks.named("jar")
+    from zipTree(project(":0common").tasks.named("jar").get().archiveFile.get().asFile)
+    from zipTree(project(":0server-bukkit").tasks.named("jar").get().archiveFile.get().asFile)
+
+    exclude("META-INF/*.kotlin_module")
+}
