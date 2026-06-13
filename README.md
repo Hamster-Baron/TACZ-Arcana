@@ -38,6 +38,7 @@ The Comprehensive Develop Kits for Timeless and Classics Guns : Zero.
 ## Disclaimer of Liability / 免责声明
 This software is provided **"as is"**, without any express or implied warranties. 
 本软件按**现状**提供，不附带任何明示或暗示的担保。
+
 The author **is not responsible for any damages**, including but not limited to: 
 作者**不对任何损害负责**，包括但不限于：
 - Software crashes, bugs, or data corruption.
