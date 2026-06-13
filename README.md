@@ -29,6 +29,22 @@ The Comprehensive Develop Kits for Timeless and Classics Guns : Zero.
 - We retain **All rights reserved** for the official release version and will take necessary action against any unauthorized use.
 - 开发组对官方正式发布版本保留所有权利，并保留对任何未经授权的使用行为采取必要行动的权利。
 
+## Build / 构建
+
+```powershell
+.\gradlew.bat :zHybrid:build
+```
+
+TacZ is resolved from Curse Maven by default: (1.1.8-hotfix) 
+
+```text
+curse.maven:timeless-and-classics-zero-1028108:8141310
+```
+
+Other compile-time mod dependencies are resolved from Modrinth Maven, Maven Central, and JitPack.
+
+其他编译期模组依赖会从 Modrinth Maven、Maven Central 与 JitPack 解析。
+
 
 ## Credits / 致谢
 
