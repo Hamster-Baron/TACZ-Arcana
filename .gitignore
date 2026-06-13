@@ -25,3 +25,6 @@ META-INF/natives/
 
 *.dat
 *.data
+
+client/lib/*.jar
+server/lib/*.jar

@@ -54,9 +54,16 @@ subprojects {
         }
 
         maven {
+            name = "Modrinth"
+            url = "https://api.modrinth.com/maven"
+            content { includeGroup "maven.modrinth" }
+        }
+
+        maven {
             url 'https://jitpack.io'
             content {
                 includeGroup "com.github.mcmodderanchor"
+                includeGroup "com.github.FiguraMC.luaj"
             }
         }
     }

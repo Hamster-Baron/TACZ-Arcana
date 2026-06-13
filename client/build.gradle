@@ -15,7 +15,14 @@ dependencies {
     compileOnly "thedarkcolour:kotlinforforge:4.12.0"
     implementation project(":0common")
     compileOnly fg.deobf(rootProject.ext.tacz_dependency)
-    compileOnly fg.deobf(fileTree("./lib"))
+    compileOnly "org.apache.bcel:bcel:6.6.1"
+    compileOnly "org.apache.commons:commons-math3:3.6.1"
+    compileOnly "com.github.FiguraMC.luaj:luaj-core:3.0.8-figura"
+    compileOnly "com.github.FiguraMC.luaj:luaj-jse:3.0.8-figura"
+    compileOnly fg.deobf("io.github.llamalad7:mixinextras-forge:0.3.6")
+    compileOnly fg.deobf("maven.modrinth:chloride:FORGE-mc1.20.1-v1.5.4")
+    compileOnly fg.deobf("maven.modrinth:yD9qW65f:1.20.1-v1.2.13")
+    compileOnly fg.deobf("maven.modrinth:oculus:1.20.1-1.8.0")
 
     compileOnly fg.deobf("com.github.mcmodderanchor:simplebedrockmodel:2.2.2-forge-mc1.20.1")
 
