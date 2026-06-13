@@ -1,7 +1,7 @@
 <h1 align="center">TacZ Arcana Development Kit</h1>
 
 <p align="center">
-    <a href="https://https://www.curseforge.com/minecraft/mc-mods/tacz-arcana-timeless-and-classics-guns">
+    <a href="https://www.curseforge.com/minecraft/mc-mods/tacz-arcana-timeless-and-classics-guns">
         <img src="http://cf.way2muchnoise.eu/full_tacz-arcana-timeless-and-classics-guns.svg" alt="CurseForge Download">
     </a>
     <img src="https://img.shields.io/badge/license-GNU GPL 3.0-green" alt="License">
