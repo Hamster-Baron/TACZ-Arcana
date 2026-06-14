@@ -29,6 +29,21 @@ The Comprehensive Develop Kits for Timeless and Classics Guns : Zero.
 - We retain **All rights reserved** for the official release version and will take necessary action against any unauthorized use.
 - 开发组对官方正式发布版本保留所有权利，并保留对任何未经授权的使用行为采取必要行动的权利。
 
+## Documentation / 文档
+
+For full documentation, please visit the Wiki: **[Arcana Official Wiki](https://hamsterbaron.gitbook.io/hamsterbaron)**
+
+- The Wiki includes installation instructions, feature documentation, gunpack development references, compatibility information, and known limitations.For skill component development and condition block definitions, please also refer to:
+- Wiki 中包含安装说明、功能文档、Gunpack 开发参考、兼容性信息与已知限制。如需开发技能组件或编写条件块，请同时参考：
+```text
+config/taczexpands/skills/example.yaml
+```
+- This example file serves as the reference for available skill components, condition blocks, and related configuration formats.
+- 该示例文件可作为可用技能组件、条件块及相关配置格式的参照。
+- Arcana is a comprehensive deep-modification mod that touches client rendering, gunpack function extensions, skill system and internal TaCZ mechanics. When using, building, or developing based on this project, read the Wiki together with the example files.
+- Arcana 是一个综合性的深度功能修改模组，涉及客户端渲染、功能扩展、技能系统与 TaCZ 内部机制扩展。使用、构建或基于本项目进行二次开发时，请务必结合 Wiki 与示例配置文件一并阅读。
+
+
 ## Build / 构建
 
 ```powershell
