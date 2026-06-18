@@ -24,10 +24,8 @@ The Comprehensive Develop Kits for Timeless and Classics Guns : Zero.
 - 因此，开源版本的直接构建可能无法正常加载部分枪械包，部分枪械包亦可能存在功能缺失的情况。
 - Except for the asset protection related components, all other features are functionally identical to the official release version.
 - 除相关资产保护组件外，其余功能均与官方正式发布版本在功能上保持一致。
-- With proper credit and compliance with applicable licenses, you may build and use the open-source version of Arcana for your own modpack, or extract standalone components for gunpack development.
-- 在明确注明来源并遵守适用许可证条款的前提下，你可以参考本项目为自己的模组整合包自行构建并使用开源版Arcana，或将其中的独立功能组件剥离出来用于拓展包 (Gunpack) 开发。
-- We retain **All rights reserved** for the official release version and will take necessary action against any unauthorized use.
-- 开发组对官方正式发布版本保留所有权利，并保留对任何未经授权的使用行为采取必要行动的权利。
+- With proper credit and compliance with applicable licenses, you may build and use Arcana for your own modpack, or extract standalone components for gunpack development.
+- 在明确注明来源并遵守适用许可证条款的前提下，你可以参考本项目为自己的模组整合包自行构建并使用Arcana，或将其中的独立功能组件剥离出来用于拓展包 (Gunpack) 开发。
 
 ## Documentation / 文档
 
@@ -86,7 +84,6 @@ The official development group does not support, encourage, authorize, or endors
 ## License / 许可证
 
 - **Source Code:** [GNU GPL 3.0](https://www.gnu.org/licenses/gpl-3.0.txt)
-- **Official Release Builds:** All Rights Reserved / 保留所有权利.
 
 The GPL-covered code remains licensed under GNU GPL v3. Official release builds may contain additional proprietary components or assets that are not licensed under GPLv3 unless explicitly stated otherwise.
 
