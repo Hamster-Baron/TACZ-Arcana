@@ -47,7 +47,7 @@ public class BeamRendererOverride {
     public static final ResourceLocation LASER_BEAM_TEXTURE = new ResourceLocation(GunMod.MOD_ID, "textures/entity/beam.png");
     private static final LaserConfig DEFAULT_LASER_CONFIG = new LaserConfig();
 
-    public static void renderLaserBeam(ItemStack gunItem, ItemStack renderItem, PoseStack poseStack, ItemDisplayContext transformType, @Nonnull List<BedrockPart> path) {
+    public static void renderLaserBeam(ItemStack gunItem, ItemStack renderItem, PoseStack poseStack, ItemDisplayContext transformType, @Nonnull List<BedrockPart> path, MultiBufferSource bufferSource) {
         var stack = renderItem;
         if (stack == null || !transformType.firstPerson() && !(transformType == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND)) {
             return;
@@ -69,7 +69,6 @@ public class BeamRendererOverride {
         float maxLen = transformType.firstPerson() ? laserConfig.getLength() : laserConfig.getLengthThird();
         float width = transformType.firstPerson() ? laserConfig.getWidth() : laserConfig.getWidthThird();
 
-        MultiBufferSource.BufferSource bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
         VertexConsumer builder = bufferSource.getBuffer(BeamRenderer.LaserBeamRenderState.getLaserBeam());
         poseStack.pushPose();
         {
@@ -87,7 +86,7 @@ public class BeamRendererOverride {
             stringVertex(actualLen == null ? -maxLen : -actualLen, width, builder, poseStack.last(), r, g, b, RenderConfig.ENABLE_LASER_FADE_OUT.get());
 
             if (actualLen != null) {
-                float dotZ = -actualLen + 0.01f;
+                float dotZ = -Math.max(0.0f, actualLen - 0.01f);
                 drawLaserDot(dotZ, width, builder, poseStack.last(), r, g, b);
             }
         }

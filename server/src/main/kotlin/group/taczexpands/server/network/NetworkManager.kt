@@ -7,9 +7,7 @@ import net.minecraftforge.network.NetworkDirection
 import net.minecraftforge.network.PacketDistributor
 
 object NetworkManager {
-    fun init(): Boolean {
-        return NetworkCommon.init()
-    }
+    fun init(): Boolean = NetworkCommon.init()
 
     fun <T> sendToPlayer(packet: T, player: ServerPlayer) {
         NetworkCommon.CHANNEL.sendTo(packet, player.connection.connection, NetworkDirection.PLAY_TO_CLIENT)

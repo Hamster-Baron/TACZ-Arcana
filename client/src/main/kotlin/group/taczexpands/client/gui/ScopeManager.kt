@@ -5,9 +5,10 @@ import com.mojang.blaze3d.vertex.PoseStack
 import com.tacz.guns.api.item.IGun
 import com.tacz.guns.client.model.BedrockAttachmentModel
 import com.tacz.guns.client.model.bedrock.BedrockPart
-import group.taczexpands.client.TACZExpandsClient
 import group.taczexpands.client.compat.CompatHelper
 import group.taczexpands.client.compat.iris.IrisCompat
+import group.taczexpands.client.render.scope.ScopeVisibility
+import group.taczexpands.client.render.surface.SurfaceEngine
 import group.taczexpands.client.util.predictBullet
 import group.taczexpands.common.accessor.IAccessorBulletData
 import group.taczexpands.common.accessor.IAccessorGunData
@@ -39,6 +40,9 @@ object ScopeManager {
     var time = 0
 
     var lastOffset: Vector4f? = null
+    private var rollbackStartedAt: Float? = null
+    private var dropPointFrame = Long.MIN_VALUE
+    private var dropPointResult: HitResult? = null
 
     fun reset() {
         lastHookPosNDC = Vector4f()
@@ -52,6 +56,9 @@ object ScopeManager {
         time = 0
 
         lastOffset = null
+        rollbackStartedAt = null
+        dropPointFrame = Long.MIN_VALUE
+        dropPointResult = null
     }
 
     fun onClientTick() {
@@ -76,20 +83,6 @@ object ScopeManager {
                 ndcPos.z >= -1.0 && ndcPos.z <= 1.0
     }
 
-    fun log(msg: String) {
-        if ((Minecraft.getInstance().player?.tickCount ?: 1) % 20 == 0)
-            TACZExpandsClient.LOGGER.info(msg)
-    }
-
-    fun logVector4f(name: String, vec: Vector4f) {
-        if ((Minecraft.getInstance().player?.tickCount ?: 1) % 20 == 0)
-            TACZExpandsClient.LOGGER.info("$name: ${vec.x}, ${vec.y}, ${vec.z}, ${vec.w}")
-    }
-
-    fun onRenderDivision(part: BedrockPart, poseStack: PoseStack) {
-
-    }
-
     fun findIntersectionOnZPlaneVector4f(rootModelPos: Vector4f, targetModelPos: Vector4f, pivotModelPos: Vector4f): Vector4f? {
         val rootX = rootModelPos.x() / rootModelPos.w()
         val rootY = rootModelPos.y() / rootModelPos.w()
@@ -105,12 +98,7 @@ object ScopeManager {
         val dy = targetY - rootY
         val dz = targetZ - rootZ
 
-        if (dz == 0.0f) {
-            if (rootZ == pivotZ) {
-                return null
-            }
-            return null
-        }
+        if (dz == 0.0f) return null
 
         val t = (pivotZ - rootZ) / dz
 
@@ -122,6 +110,7 @@ object ScopeManager {
     }
 
     fun onRenderDropPoint(part: BedrockPart, poseStack: PoseStack): Boolean {
+        if (!ScopeVisibility.visible()) return false
         if (CompatHelper.hasIris() && IrisCompat.isHandRendererActive()) return false
         lastScopeModel ?: return false
         lastScopeViewPath ?: return false
@@ -135,7 +124,12 @@ object ScopeManager {
         val bulletData = IAccessorGunData.getCurrentBulletData(gunData, mainHand) ?: return false
         if (IAccessorBulletData.getBulletExtraHolder(bulletData).missileData.isMissile) return false
 
-        val result = predictBullet(level, player, bulletData) ?: return false
+        val frame = SurfaceEngine.frame()
+        if (dropPointFrame != frame) {
+            dropPointFrame = frame
+            dropPointResult = predictBullet(level, player, bulletData)
+        }
+        val result = dropPointResult ?: return false
 
         if (result.type == HitResult.Type.MISS) return false
 
@@ -143,31 +137,10 @@ object ScopeManager {
         val y = result.location.y
         val z = result.location.z
 
-
         val targetNdcPos = worldToNdc(Vec3(x, y, z))
         if (!isNdcPosVisible(targetNdcPos)) return false
 
-        val invertedProjectionMatrix = Matrix4f(RenderSystem.getProjectionMatrix()).invert()
-        val invertedViewMatrix = Matrix4f(poseStack.last().pose()).invert()
-
-        targetNdcPos.mulProject(invertedProjectionMatrix)
-        val targetPartPos = targetNdcPos.mul(invertedViewMatrix)
-
-        val paths = generateSequence(part.parent) { it.parent }.toList().reversed()
-
-        val tempPoseStack = PoseStack()
-        paths.forEach { it.translateAndRotateAndScale(tempPoseStack) }
-        val partViewToModelView = tempPoseStack.last().pose()
-
-        val targetModelPos = targetPartPos.mul(partViewToModelView)
-        val pivotModelPos = Vector4f(getCenter(PoseStack(), paths.toMutableList().apply { add(part) }), 1.0f)
-        val rootModelPos = Vector4f(getCenter(PoseStack(), lastScopeViewPath!!), 1.0f)
-
-        val intersectionPos = findIntersectionOnZPlaneVector4f(rootModelPos, targetModelPos, pivotModelPos) ?: return onProgressRollback(part, poseStack)
-
-        val offsetPos = intersectionPos.sub(pivotModelPos, Vector4f())
-
-        offsetPos.mul(partViewToModelView.invert())
+        val offsetPos = markerOffset(part, poseStack, targetNdcPos) ?: return onProgressRollback(part, poseStack)
         part.offsetX += offsetPos.x
         part.offsetY += offsetPos.y
         part.offsetZ += offsetPos.z
@@ -193,6 +166,19 @@ object ScopeManager {
 
         if (!isNdcPosVisible(targetNdcPos)) return onProgressRollback(part, poseStack)
 
+        val offsetPos = markerOffset(part, poseStack, targetNdcPos) ?: return onProgressRollback(part, poseStack)
+        val progress = if (lockingTime != 0) (getCurrentTime() / lockingTime.toFloat()).coerceIn(0.0f, 1.0f) else 1.0f
+        rollbackStartedAt = null
+        lastOffset = Vector4f(offsetPos)
+        offsetPos.mul(progress)
+        part.offsetX += offsetPos.x
+        part.offsetY += offsetPos.y
+        part.offsetZ += offsetPos.z
+
+        return progress >= 1.0f
+    }
+
+    private fun markerOffset(part: BedrockPart, poseStack: PoseStack, targetNdcPos: Vector4f): Vector4f? {
         val invertedProjectionMatrix = Matrix4f(RenderSystem.getProjectionMatrix()).invert()
         val invertedViewMatrix = Matrix4f(poseStack.last().pose()).invert()
 
@@ -209,23 +195,18 @@ object ScopeManager {
         val pivotModelPos = Vector4f(getCenter(PoseStack(), paths.toMutableList().apply { add(part) }), 1.0f)
         val rootModelPos = Vector4f(getCenter(PoseStack(), lastScopeViewPath!!), 1.0f)
 
-        val intersectionPos = findIntersectionOnZPlaneVector4f(rootModelPos, targetModelPos, pivotModelPos) ?: return onProgressRollback(part, poseStack)
+        val intersectionPos = findIntersectionOnZPlaneVector4f(rootModelPos, targetModelPos, pivotModelPos) ?: return null
 
         val offsetPos = intersectionPos.sub(pivotModelPos, Vector4f())
-        val progress = if (lockingTime != 0) (getCurrentTime() / lockingTime.toFloat()).coerceIn(0.0f, 1.0f) else 1.0f
-        offsetPos.mul(partViewToModelView.invert())
-        lastOffset = Vector4f(offsetPos)
-        offsetPos.mul(progress)
-        part.offsetX += offsetPos.x
-        part.offsetY += offsetPos.y
-        part.offsetZ += offsetPos.z
 
-        return progress >= 1.0f
+        return offsetPos.mul(partViewToModelView.invert())
     }
 
     fun onProgressRollback(part: BedrockPart, poseStack: PoseStack): Boolean {
         if (lastOffset != null) {
-            val progress = getCurrentTime() / 20.toFloat()
+            val now = getCurrentTime()
+            if (rollbackStartedAt == null) rollbackStartedAt = now
+            val progress = ((now - rollbackStartedAt!!) / 20.0f).coerceIn(0.0f, 1.0f)
             val rollbackProgress = 1.0f - progress
             part.offsetX += lastOffset!!.x * rollbackProgress
             part.offsetY += lastOffset!!.y * rollbackProgress

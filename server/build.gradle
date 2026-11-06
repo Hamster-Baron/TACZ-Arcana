@@ -15,6 +15,7 @@ jarJar.enable()
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
+    compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:0.5.4"))
     compileOnly "thedarkcolour:kotlinforforge:4.12.0"
     compileOnly("com.charleskorn.kaml:kaml:0.104.0")
     compileOnly "com.ezylang:EvalEx:3.6.0"

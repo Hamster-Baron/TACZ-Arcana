@@ -1,16 +1,17 @@
 package group.taczexpands.client.mixin;
 
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import group.taczexpands.client.TACZExpandsClient;
 import group.taczexpands.client.accessor.IAccessorLevelRenderer;
-import group.taczexpands.client.compat.iris.IrisCompat;
-import group.taczexpands.client.compat.CompatHelper;
 import group.taczexpands.client.gui.ScopeManager;
 import group.taczexpands.client.override.BeamRendererOverride;
 import group.taczexpands.client.render.Depth;
 import group.taczexpands.client.render.FlashlightData;
+import group.taczexpands.client.render.flashlight.FlashlightDepthState;
+import group.taczexpands.client.render.flashlight.FlashlightEmbeddium;
+import group.taczexpands.client.compat.RendererPresence;
+import group.taczexpands.client.render.surface.SurfaceRenderer;
 import group.taczexpands.client.util.RenderHelper;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Camera;
@@ -19,18 +20,14 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.*;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
-import net.minecraft.client.renderer.chunk.ChunkRenderDispatcher;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
-import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
-import org.joml.Vector3d;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -45,6 +42,12 @@ import java.util.Set;
 
 @Mixin(LevelRenderer.class)
 public abstract class MixinLevelRenderer implements IAccessorLevelRenderer {
+    /** Entity outlines use the window-sized target; a camera pass owns a smaller viewport. */
+    @ModifyReturnValue(method = "shouldShowEntityOutlines", at = @At("RETURN"))
+    private boolean taczexpands$surfaceEntityOutlines(boolean original) {
+        return original && !SurfaceRenderer.isWorldPass() && !Depth.INSTANCE.getDepthRendering();
+    }
+
     @Shadow
     @Nullable
     private ClientLevel level;
@@ -66,33 +69,16 @@ public abstract class MixinLevelRenderer implements IAccessorLevelRenderer {
     private Frustum capturedFrustum;
 
     @Shadow
-    @Final
-    private Vector3d frustumPos;
-
-    @Shadow
     private Frustum cullingFrustum;
 
     @Shadow
     private boolean captureFrustum;
 
     @Shadow
-    protected abstract void captureFrustum(Matrix4f pViewMatrix, Matrix4f pProjectionMatrix, double pCamX, double pCamY, double pCamZ, Frustum pCapturedFrustrum);
-
-    @Shadow
     protected abstract void setupRender(Camera pCamera, Frustum pFrustum, boolean pHasCapturedFrustum, boolean pIsSpectator);
 
     @Shadow
     protected abstract void compileChunks(Camera pCamera);
-
-
-    @Shadow
-    private int renderedEntities;
-
-    @Shadow
-    private int culledEntities;
-
-    @Shadow
-    protected abstract void checkPoseStack(PoseStack pPoseStack);
 
     @Shadow
     @Final
@@ -113,17 +99,6 @@ public abstract class MixinLevelRenderer implements IAccessorLevelRenderer {
     public abstract boolean isChunkCompiled(BlockPos pPos);
 
     @Shadow
-    @Nullable
-    private RenderTarget itemEntityTarget;
-
-    @Shadow
-    @Nullable
-    private RenderTarget weatherTarget;
-
-    @Shadow
-    public abstract void renderLevel(PoseStack pPoseStack, float pPartialTick, long pFinishNanoTime, boolean pRenderBlockOutline, Camera pCamera, GameRenderer pGameRenderer, LightTexture pLightTexture, Matrix4f pProjectionMatrix);
-
-    @Shadow
     private double xTransparentOld;
 
     @Shadow
@@ -133,47 +108,24 @@ public abstract class MixinLevelRenderer implements IAccessorLevelRenderer {
     private double zTransparentOld;
 
     @Shadow
-    @Nullable
-    private ChunkRenderDispatcher chunkRenderDispatcher;
-
-    @Shadow
-    private int ticks;
-
-    @Shadow
-    public abstract Frustum getFrustum();
-
-    @Shadow
     protected abstract void renderChunkLayer(RenderType pRenderType, PoseStack pPoseStack, double pCamX, double pCamY, double pCamZ, Matrix4f pProjectionMatrix);
 
     @Inject(method = "renderLevel", at = @At("HEAD"))
-    public void onRenderLevel(PoseStack p_109600_, float p_109601_, long p_109602_, boolean p_109603_, Camera p_109604_, GameRenderer p_109605_, LightTexture p_109606_, Matrix4f p_254120_, CallbackInfo ci) {
+    public void onRenderLevel(PoseStack poseStack, float partialTick, long finishTimeNano, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightTexture lightTexture, Matrix4f projectionMatrix, CallbackInfo ci) {
         if (TACZExpandsClient.Companion.getPatchMainTargetDraw()) {
-            ScopeManager.INSTANCE.setLastProjectionMatrix(new Matrix4f(p_254120_));
-            ScopeManager.INSTANCE.setLastViewMatrix(new Matrix4f(p_109600_.last().pose()));
+            ScopeManager.INSTANCE.setLastProjectionMatrix(new Matrix4f(projectionMatrix));
+            ScopeManager.INSTANCE.setLastViewMatrix(new Matrix4f(poseStack.last().pose()));
         }
 
-        BeamRendererOverride.lastProjectionMatrix = new Matrix4f(p_254120_);
-        BeamRendererOverride.lastViewMatrix = new Matrix4f(p_109600_.last().pose());
+        BeamRendererOverride.lastProjectionMatrix = new Matrix4f(projectionMatrix);
+        BeamRendererOverride.lastViewMatrix = new Matrix4f(poseStack.last().pose());
     }
 
-    @Inject(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/multiplayer/ClientLevel;entitiesForRendering()Ljava/lang/Iterable;"))
-    public void hookPreEntityRender(PoseStack p_109600_, float p_109601_, long p_109602_, boolean p_109603_, Camera p_109604_, GameRenderer p_109605_, LightTexture p_109606_, Matrix4f p_254120_, CallbackInfo ci) {
-        if (TACZExpandsClient.Companion.shouldUseThermalImaging()) {
-            if (CompatHelper.INSTANCE.hasIris()) {
-                IrisCompat.INSTANCE.saveAndDisableExtendedVertexFormat();
-            }
-        }
-
-
-    }
-
-    @Inject(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraftforge/client/ForgeHooksClient;dispatchRenderStage(Lnet/minecraftforge/client/event/RenderLevelStageEvent$Stage;Lnet/minecraft/client/renderer/LevelRenderer;Lcom/mojang/blaze3d/vertex/PoseStack;Lorg/joml/Matrix4f;ILnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;)V", ordinal = 1, remap = false))
-    public void hookPostEntityRender(PoseStack p_109600_, float p_109601_, long p_109602_, boolean p_109603_, Camera p_109604_, GameRenderer p_109605_, LightTexture p_109606_, Matrix4f p_254120_, CallbackInfo ci) {
-        if (TACZExpandsClient.Companion.shouldUseThermalImaging()) {
-            if (CompatHelper.INSTANCE.hasIris()) {
-                IrisCompat.INSTANCE.restoreExtendedVertexFormat();
-            }
-        }
+    // Post effects share cached RGB modes; restore their alpha factors after entity draws.
+    @Inject(method = "renderLevel", at = @At(value = "INVOKE", target =
+            "Lnet/minecraft/client/renderer/PostChain;process(F)V", ordinal = 0))
+    private void taczexpands$outlineBlend(CallbackInfo ci) {
+        FlashlightDepthState.prepareOutlineBlend();
     }
 
     @Inject(method = "doEntityOutline", at = @At("HEAD"), cancellable = true)
@@ -181,7 +133,6 @@ public abstract class MixinLevelRenderer implements IAccessorLevelRenderer {
         ci.cancel();
         RenderHelper.INSTANCE.doEntityOutline((LevelRenderer) (Object) this);
     }
-
 
     @Redirect(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/LevelRenderer;setupRender(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;ZZ)V"))
     public void redirectSetupRender(LevelRenderer instance, Camera camera, Frustum frustum, boolean bool1, boolean bool2) {
@@ -195,54 +146,55 @@ public abstract class MixinLevelRenderer implements IAccessorLevelRenderer {
         this.compileChunks(camera);
     }
 
+    @Override
+    public Frustum taczexpands$getCullingFrustum() {
+        return cullingFrustum;
+    }
+
+    @Override
+    public void taczexpands$setCullingFrustum(Frustum frustum) {
+        cullingFrustum = frustum;
+    }
+
+    @Override
+    public Frustum taczexpands$getCapturedFrustum() {
+        return capturedFrustum;
+    }
+
+    @Override
+    public void taczexpands$setCapturedFrustum(Frustum frustum) {
+        capturedFrustum = frustum;
+    }
+
+    @Override
+    public boolean taczexpands$getCaptureFrustum() {
+        return captureFrustum;
+    }
+
+    @Override
+    public void taczexpands$setCaptureFrustum(boolean capture) {
+        captureFrustum = capture;
+    }
+
     @Unique
     @Override
     public void taczexpands$renderDepth(FlashlightData flashlight, PoseStack pPoseStack, float pPartialTick, Camera pCamera, Matrix4f pProjectionMatrix) {
-        ProfilerFiller profilerfiller = this.level.getProfiler();
         Vec3 vec3 = pCamera.getPosition();
         double d0 = vec3.x();
         double d1 = vec3.y();
         double d2 = vec3.z();
-        Matrix4f matrix4f = pPoseStack.last().pose();
-        profilerfiller.popPush("culling");
-        boolean flag = this.capturedFrustum != null;
-        Frustum frustum;
-        if (flag) {
-            frustum = this.capturedFrustum;
-            frustum.prepare(this.frustumPos.x, this.frustumPos.y, this.frustumPos.z);
-        } else {
-            frustum = this.cullingFrustum;
-        }
-
-        this.minecraft.getProfiler().popPush("captureFrustum");
-        if (this.captureFrustum) {
-            this.captureFrustum(matrix4f, pProjectionMatrix, vec3.x, vec3.y, vec3.z, flag ? new Frustum(matrix4f, pProjectionMatrix) : frustum);
-            this.captureFrustum = false;
-        }
-
-        profilerfiller.popPush("clear");
-        FogRenderer.setupNoFog();
-        RenderSystem.clear(16640, Minecraft.ON_OSX);
-
-        profilerfiller.popPush("terrain_setup");
-        profilerfiller.popPush("compilechunks");
-        profilerfiller.popPush("terrain");
-        this.renderChunkLayer(RenderType.solid(), pPoseStack, d0, d1, d2, pProjectionMatrix);
-        this.renderChunkLayer(RenderType.cutoutMipped(), pPoseStack, d0, d1, d2, pProjectionMatrix);
-        this.renderChunkLayer(RenderType.cutout(), pPoseStack, d0, d1, d2, pProjectionMatrix);
-        profilerfiller.pop();
-        profilerfiller.popPush("entities");
-        this.renderedEntities = 0;
-        this.culledEntities = 0;
-
+        Frustum frustum = this.cullingFrustum;
+        this.entityRenderDispatcher.prepare(this.level, pCamera, this.minecraft.crosshairPickEntity);
+        this.blockEntityRenderDispatcher.prepare(this.level, pCamera, this.minecraft.hitResult);
+        taczexpands$renderDepthLayer(RenderType.solid(), pPoseStack, vec3, pProjectionMatrix);
+        taczexpands$renderDepthLayer(RenderType.cutoutMipped(), pPoseStack, vec3, pProjectionMatrix);
+        taczexpands$renderDepthLayer(RenderType.cutout(), pPoseStack, vec3, pProjectionMatrix);
         MultiBufferSource.BufferSource multibuffersource$buffersource = this.renderBuffers.bufferSource();
 
         for (Entity entity : this.level.entitiesForRendering()) {
             if (this.entityRenderDispatcher.shouldRender(entity, frustum, d0, d1, d2) || entity.hasIndirectPassenger(this.minecraft.player)) {
                 BlockPos blockpos = entity.blockPosition();
                 if ((this.level.isOutsideBuildHeight(blockpos.getY()) || this.isChunkCompiled(blockpos)) && (entity != pCamera.getEntity() || pCamera.isDetached() || pCamera.getEntity() instanceof LivingEntity && ((LivingEntity) pCamera.getEntity()).isSleeping()) && (!(entity instanceof LocalPlayer) || pCamera.getEntity() == entity || (entity == minecraft.player && !minecraft.player.isSpectator()))) { 
-                    ++this.renderedEntities;
-
                     MultiBufferSource multibuffersource = multibuffersource$buffersource;
 
                     this.renderEntity(entity, d0, d1, d2, pPartialTick, pPoseStack, multibuffersource);
@@ -250,14 +202,61 @@ public abstract class MixinLevelRenderer implements IAccessorLevelRenderer {
             }
         }
 
-        multibuffersource$buffersource.endLastBatch();
-        multibuffersource$buffersource.endBatch(RenderType.entitySolid(TextureAtlas.LOCATION_BLOCKS));
-        multibuffersource$buffersource.endBatch(RenderType.entityCutout(TextureAtlas.LOCATION_BLOCKS));
-        multibuffersource$buffersource.endBatch(RenderType.entityCutoutNoCull(TextureAtlas.LOCATION_BLOCKS));
-        multibuffersource$buffersource.endBatch(RenderType.entitySmoothCutout(TextureAtlas.LOCATION_BLOCKS));
+        if (RendererPresence.EMBEDDIUM_PRESENT) {
+            FlashlightEmbeddium.forEachVisible(entity ->
+                    taczexpands$renderDepthBlockEntity(entity, pPoseStack, pPartialTick, vec3, frustum, multibuffersource$buffersource));
+        } else {
+            for (var info : this.renderChunksInFrustum) {
+                for (var blockEntity : info.chunk.getCompiledChunk().getRenderableBlockEntities()) {
+                    taczexpands$renderDepthBlockEntity(blockEntity, pPoseStack, pPartialTick, vec3, frustum, multibuffersource$buffersource);
+                }
+            }
+            synchronized (this.globalBlockEntities) {
+                for (var blockEntity : this.globalBlockEntities) {
+                    taczexpands$renderDepthBlockEntity(blockEntity, pPoseStack, pPartialTick, vec3, frustum, multibuffersource$buffersource);
+                }
+            }
+        }
+        multibuffersource$buffersource.endBatch();
+
+        double previousX = this.xTransparentOld;
+        double previousY = this.yTransparentOld;
+        double previousZ = this.zTransparentOld;
+        try {
+            // Depth ignores blend ordering; retain the main view's translucent mesh order.
+            this.xTransparentOld = d0;
+            this.yTransparentOld = d1;
+            this.zTransparentOld = d2;
+            taczexpands$renderDepthLayer(RenderType.translucent(), pPoseStack, vec3, pProjectionMatrix);
+            taczexpands$renderDepthLayer(RenderType.tripwire(), pPoseStack, vec3, pProjectionMatrix);
+        } finally {
+            this.xTransparentOld = previousX;
+            this.yTransparentOld = previousY;
+            this.zTransparentOld = previousZ;
+        }
     }
 
+    @Unique
+    private void taczexpands$renderDepthLayer(RenderType layer, PoseStack pose, Vec3 camera, Matrix4f projection) {
+        if (RendererPresence.EMBEDDIUM_PRESENT) {
+            FlashlightEmbeddium.drawLayer(layer, pose, camera);
+        } else {
+            this.renderChunkLayer(layer, pose, camera.x, camera.y, camera.z, projection);
+        }
+    }
 
-
+    @Unique
+    private void taczexpands$renderDepthBlockEntity(BlockEntity entity, PoseStack pose, float partialTick,
+            Vec3 camera, Frustum frustum, MultiBufferSource.BufferSource buffers) {
+        if (!frustum.isVisible(entity.getRenderBoundingBox())) return;
+        pose.pushPose();
+        try {
+            var position = entity.getBlockPos();
+            pose.translate(position.getX() - camera.x, position.getY() - camera.y, position.getZ() - camera.z);
+            this.blockEntityRenderDispatcher.render(entity, partialTick, pose, buffers);
+        } finally {
+            pose.popPose();
+        }
+    }
 
 }

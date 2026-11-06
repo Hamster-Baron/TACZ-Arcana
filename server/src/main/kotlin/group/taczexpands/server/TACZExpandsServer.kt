@@ -16,6 +16,7 @@ import group.taczexpands.server.nbt.DataStorage
 import group.taczexpands.server.nbt.DataType
 import group.taczexpands.server.listener.PlayerListener
 import group.taczexpands.server.module.dash.DashManager
+import group.taczexpands.server.module.rotation.RotationManager
 import group.taczexpands.server.module.visual_break_progress.BreakProgressManager
 import group.taczexpands.server.nbt.PlayerExtrasServer
 import group.taczexpands.server.network.NetworkManager
@@ -23,6 +24,7 @@ import group.taczexpands.server.skill.*
 import group.taczexpands.server.util.Debug
 import group.taczexpands.server.util.ScheduledTask
 import group.taczexpands.server.util.YAML
+import group.taczexpands.server.util.handleEvent
 import kotlinx.serialization.encodeToString
 import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
@@ -47,6 +49,11 @@ import kotlin.jvm.optionals.getOrNull
 
 
 class TACZExpandsServer {
+    private data class ConfigurationSnapshot(
+        val volatileVariables: VolatileVariablesConfig,
+        val values: ValuesConfig
+    )
+
     companion object {
         lateinit var INSTANCE: TACZExpandsServer
         lateinit var LOGGER: Logger
@@ -56,6 +63,7 @@ class TACZExpandsServer {
             get() = _configPath!!
 
         val SCHEDULED_TASKS = mutableListOf<ScheduledTask>()
+
     }
 
     var reloadMessageListener: CommandSourceStack? = null
@@ -78,6 +86,7 @@ class TACZExpandsServer {
 
         GunScriptAPIServer.init()
         PlayerExtrasServer.init()
+        RotationManager.initialize()
 
     }
 
@@ -89,6 +98,7 @@ class TACZExpandsServer {
     fun onAddReloadListener(event: AddReloadListenerEvent) {
         event.addListener(PackSkillsManager)
         event.addListener(PackValuesManager)
+        event.addListener(PlainSkillDefinitionManager)
     }
 
     @SubscribeEvent
@@ -332,12 +342,13 @@ class TACZExpandsServer {
                     reloadMessageListener = it.source
                     reloadErrorCount = 0
 
-                    val loadedSkills = reload()
+                    val result = SkillReloadCoordinator.reloadNow()
 
-                    if (loadedSkills >= 0) {
-                        it.source.sendModMessage(Component.translatable("message.taczexpands.reloaded_server", loadedSkills.toString()))
+                    if (result.success) {
+                        it.source.sendModMessage(Component.translatable("message.taczexpands.reloaded_hybrid", result.packSkills.toString()))
+                        it.source.sendModMessage(Component.translatable("message.taczexpands.reloaded_server", result.serverSkills.toString()))
                     } else {
-                        it.source.sendModMessage(Component.translatable("message.taczexpands.reload_server_unsupported"))
+                        it.source.sendModMessage(Component.translatable("message.taczexpands.reload_failed"))
                     }
 
                     reloadMessageListener = null
@@ -445,45 +456,56 @@ class TACZExpandsServer {
         )
     }
 
-    fun reload(): Int {
+    fun reload(): SkillReloadResult {
+        reloadErrorCount = 0
+        val previousConfiguration = snapshotConfiguration()
         try {
-            VolatileVariablesConfig.clear()
-            SkillManager.clear()
             MissileManager.reloadJammingEntities()
             BulletManager.reloadBlockResistanceTable()
-
-            val loadedSkills = loadPlainSkillData()
-            LOGGER.info("Reloaded. (Skills: $loadedSkills)")
-
-            return loadedSkills
+            SkillManager.beginReload()
+            VolatileVariablesConfig.clear()
+            ValuesConfig.clear()
+            PlainSkillDefinitionManager.load(configPath)
+            if (SkillManager.hasReloadErrors()) {
+                return rejectSkillReload(previousConfiguration)
+            }
+            val counts = SkillManager.publishReload()
+            LOGGER.info("Reloaded. (Server: ${counts.serverSkills} Packs: ${counts.packSkills})")
+            return SkillReloadResult(counts.serverSkills, counts.packSkills, true)
         } catch (e: Exception) {
-            e.printStackTrace()
-            return -1
+            SkillManager.reportReloadError("reload", e)
+            SkillManager.discardReload()
+            restoreConfiguration(previousConfiguration)
+            return failedSkillReloadResult()
+        } catch (e: LinkageError) {
+            reloadErrorCount++
+            LOGGER.error("Failed to reload skills; the previous snapshot remains active.", e)
+            SkillManager.discardReload()
+            restoreConfiguration(previousConfiguration)
+            return failedSkillReloadResult()
         }
     }
 
-    private fun loadPlainSkillData(): Int {
-        val before = SkillManager.LOADED_SKILLS.values.sumOf { it.size }
-
-        loadPlainDirectory("conditions", 1)
-        loadPlainDirectory("actions", 2)
-        loadPlainDirectory("skills", 0)
-
-        return SkillManager.LOADED_SKILLS.values.sumOf { it.size } - before
+    private fun rejectSkillReload(previousConfiguration: ConfigurationSnapshot): SkillReloadResult {
+        val errorCount = SkillManager.getReloadErrors().size
+        SkillManager.discardReload()
+        restoreConfiguration(previousConfiguration)
+        LOGGER.error("Skill reload rejected with $errorCount error(s); the previous snapshot remains active.")
+        return failedSkillReloadResult()
     }
 
-    private fun loadPlainDirectory(name: String, type: Int) {
-        val directory = File(configPath, name)
-        if (!directory.isDirectory) return
+    private fun failedSkillReloadResult(): SkillReloadResult {
+        return SkillReloadResult(0, 0, false)
+    }
 
-        directory.walkTopDown()
-            .filter { it.isFile }
-            .filter { it.extension.equals("yml", true) || it.extension.equals("yaml", true) }
-            .filterNot { it.name.endsWith(".disabled", true) }
-            .sortedBy { it.absolutePath }
-            .forEach {
-                SkillManager.appendData(type, it.readBytes())
-            }
+    private fun snapshotConfiguration(): ConfigurationSnapshot = ConfigurationSnapshot(
+        GLOBAL_VOLATILE_VARIABLES.copy(variables = GLOBAL_VOLATILE_VARIABLES.variables.toMutableList()),
+        GLOBAL_VALUES.copy(values = GLOBAL_VALUES.values.toMutableMap())
+    )
+
+    private fun restoreConfiguration(snapshot: ConfigurationSnapshot) {
+        GLOBAL_VOLATILE_VARIABLES = snapshot.volatileVariables
+        GLOBAL_VALUES = snapshot.values
     }
 
     @SubscribeEvent
@@ -528,19 +550,24 @@ class TACZExpandsServer {
             exampleFile.writeText(yamlStr, Charsets.UTF_8)
         }
         _configPath = configPath
-        reload()
+        SkillReloadCoordinator.onServerStarted()
     }
 
     @SubscribeEvent
     fun onPostServerTick(event: ServerTickEvent) {
-        try {
+        handleEvent("ServerTickEvent.END") {
             if (event.phase != TickEvent.Phase.END) return
             SCHEDULED_TASKS.indices.reversed().forEach {
                 val task = SCHEDULED_TASKS[it]
                 if (try {
                         task.tick()
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        val skill = task.skill
+                        if (skill != null) {
+                            skill.reportExecutionError(e)
+                        } else {
+                            LOGGER.error("Failed to execute scheduled task; removing task", e)
+                        }
                         true
                     }) {
                     SCHEDULED_TASKS.removeAt(it)
@@ -553,18 +580,14 @@ class TACZExpandsServer {
             SignalManager.onServerTick()
             ParticleEmitterManager.onServerTick()
             BreakProgressManager.onServerTick()
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onPreServerTick(event: ServerTickEvent) {
-        try {
+        handleEvent("ServerTickEvent.START") {
             if (event.phase != TickEvent.Phase.START) return
             HookManager.onServerTick()
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 }

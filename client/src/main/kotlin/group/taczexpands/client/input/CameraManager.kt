@@ -18,6 +18,8 @@ object CameraManager {
     var modified = false
     var moveLock = false
     var rotateLock = false
+    var sessionId = 0L
+        private set
 
     private var paths = mutableListOf<CameraPath>()
 
@@ -37,13 +39,14 @@ object CameraManager {
 
     private var lastSyncTick = 0
 
-    fun start(paths: List<CameraPath>, moveLock: Boolean, rotateLock: Boolean) {
+    fun start(paths: List<CameraPath>, moveLock: Boolean, rotateLock: Boolean, sessionId: Long) {
         if (!modified) {
             lastCameraType = Minecraft.getInstance().options.cameraType
         }
         this.paths.clear()
         this.moveLock = moveLock
         this.rotateLock = rotateLock
+        this.sessionId = sessionId
         this.paths.addAll(paths)
         if (paths.size < 2) {
             reset()
@@ -57,7 +60,7 @@ object CameraManager {
         }
         val camera = mc.gameRenderer.mainCamera
 
-        initialPos = camera.position
+        initialPos = player.eyePosition
         initialRot[0] = camera.yRot
         initialRot[1] = camera.xRot
         initialRot[2] = 0f
@@ -68,13 +71,16 @@ object CameraManager {
         this.modified = true
     }
 
-    fun reset() {
+    fun reset(notifyServer: Boolean = true) {
         modified = false
         moveLock = false
         rotateLock = false
+        sessionId = 0L
         Minecraft.getInstance().options.cameraType = lastCameraType
 
-        NetworkManager.sendToServer(C2SActionKey(C2SActionKey.Action.UNBIND_CLIENT_CAMERA))
+        if (notifyServer) {
+            NetworkManager.sendToServer(C2SActionKey(C2SActionKey.Action.UNBIND_CLIENT_CAMERA))
+        }
     }
 
     private fun resolveAllPaths(player: LocalPlayer) {
@@ -96,8 +102,12 @@ object CameraManager {
             val currentPitch = path.pitch ?: lastPitch
             val currentRoll = path.roll ?: lastRoll
 
-            lastX = currentX; lastY = currentY; lastZ = currentZ
-            lastYaw = currentYaw; lastPitch = currentPitch; lastRoll = currentRoll
+            lastX = currentX
+            lastY = currentY
+            lastZ = currentZ
+            lastYaw = currentYaw
+            lastPitch = currentPitch
+            lastRoll = currentRoll
 
             val basePos = player.position().add(xOffset, yOffset, zOffset)
             val absPos = when (path.coordinateType) {
@@ -148,7 +158,7 @@ object CameraManager {
         Minecraft.getInstance().options.cameraType = CameraType.THIRD_PERSON_BACK
 
         val alpha = (elapsedMillis - accumulatedMillis).toFloat() / paths[targetIdx].durationMillis.toFloat()
-        val smoothAlpha = alpha * alpha * (3 - 2 * alpha)
+        val smoothAlpha = CameraInterpolation.smoothstep(alpha)
 
         val v1 = resolvedPositions[targetIdx - 1]
         val v2 = resolvedPositions[targetIdx]
@@ -165,7 +175,7 @@ object CameraManager {
         val rot1 = resolvedRotations[targetIdx - 1]
         val rot2 = resolvedRotations[targetIdx]
 
-        event.yaw = Mth.rotLerp(smoothAlpha, rot1[0], rot2[0])
+        event.yaw = CameraInterpolation.rotation(smoothAlpha, rot1[0], rot2[0])
         event.pitch = Mth.lerp(smoothAlpha, rot1[1], rot2[1])
         event.roll = Mth.lerp(smoothAlpha, rot1[2], rot2[2])
 

@@ -10,20 +10,36 @@ import com.tacz.guns.entity.EntityKineticBullet
 import com.tacz.guns.init.ModItems
 import group.taczexpands.client.api.GunScriptAPIClient
 import group.taczexpands.client.compat.CompatHelper
+import group.taczexpands.client.compat.RendererCapabilities
+import group.taczexpands.client.compat.RendererPresence
+import group.taczexpands.client.compat.iris.IrisPaintPbr
+import group.taczexpands.client.compat.iris.IrisSurfacePbr
+import group.taczexpands.client.compat.iris.IrisSurfacePipeline
 import group.taczexpands.client.config.ClientConfig
 import group.taczexpands.client.config.RuntimeConfig
 import group.taczexpands.client.entity.CustomDisplayEntityRenderer
 import group.taczexpands.client.entity.CustomDisplayManager
 import group.taczexpands.client.gui.*
 import group.taczexpands.client.input.CameraManager
+import group.taczexpands.client.input.RemoteCameraSession
+import group.taczexpands.client.input.ViewStateManager
 import group.taczexpands.client.input.InputManager
 import group.taczexpands.client.input.KeyInputs
 import group.taczexpands.client.input.ShakeManager
+import group.taczexpands.client.input.rotation.RotationController
+import group.taczexpands.client.network.s2c.S2CRotationStateHandler
+import group.taczexpands.common.network.RotationNetwork
 import group.taczexpands.client.mixin.accessor.IAccessorCamera
 import group.taczexpands.client.nbt.PlayerExtrasClient
 import group.taczexpands.client.network.NetworkManager
 import group.taczexpands.client.override.BeamRendererOverride
 import group.taczexpands.client.render.Flashlight
+import group.taczexpands.client.render.surface.SurfaceRenderer
+import group.taczexpands.client.render.surface.SurfaceResources
+import group.taczexpands.client.render.surface.SurfaceBackend
+import group.taczexpands.client.render.surface.SurfaceEngine
+import group.taczexpands.client.render.paint.PaintResources
+import group.taczexpands.client.render.particle.SnowstormParticles
 import group.taczexpands.client.render.HookManager
 import group.taczexpands.client.sound.DynamicSoundManager
 import group.taczexpands.client.util.Rotation
@@ -59,6 +75,7 @@ import net.minecraftforge.event.TickEvent
 import net.minecraftforge.event.TickEvent.RenderTickEvent
 import net.minecraftforge.event.entity.EntityTravelToDimensionEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
+import net.minecraftforge.eventbus.api.EventPriority
 import net.minecraftforge.fml.DistExecutor
 import net.minecraftforge.fml.ModList
 import net.minecraftforge.fml.ModLoadingContext
@@ -89,6 +106,7 @@ class TACZExpandsClient {
 
         val rotations = mutableListOf<Rotation>()
 
+        // True only while rendering the independent scope world view.
         var patchMainTargetDraw = false
         var mainTarget: RenderTarget? = null
 
@@ -192,6 +210,7 @@ class TACZExpandsClient {
 
         @JvmOverloads
         fun shouldUseThermalImaging(bypassPhase: Boolean = false): Boolean {
+            if (SurfaceRenderer.cameraPass()) return SurfaceRenderer.vision().equals("thermal")
             if (!ClientConfig.enableRenderFunc.get()) return false
             if (patchMainTargetDraw || bypassPhase) {
                 val player = Minecraft.getInstance().player ?: return false
@@ -208,6 +227,7 @@ class TACZExpandsClient {
 
         @JvmOverloads
         fun shouldUseNightVision(bypassPhase: Boolean = false): Boolean {
+            if (SurfaceRenderer.cameraPass()) return SurfaceRenderer.vision().equals("night")
             if (!ClientConfig.enableRenderFunc.get()) return false
             if (patchMainTargetDraw || bypassPhase) {
                 val player = Minecraft.getInstance().player ?: return false
@@ -255,9 +275,9 @@ class TACZExpandsClient {
 
         Bus.FORGE.bus().get().register(KeyInputs)
         Bus.FORGE.bus().get().register(Flashlight)
-        Bus.FORGE.bus().get().register(CreativeTabManager)
         Bus.FORGE.bus().get().register(ItemPreviewManager)
         Bus.FORGE.bus().get().register(CameraManager)
+        Bus.FORGE.bus().get().register(ViewStateManager)
 
         CustomDisplayManager.init()
 
@@ -268,6 +288,17 @@ class TACZExpandsClient {
 
         GunScriptAPIClient.init()
         PlayerExtrasClient.init()
+        RotationNetwork.registerClientHandler(S2CRotationStateHandler::handle)
+        RotationController.initialize()
+        if (RendererPresence.OCULUS_PRESENT) {
+            val capabilities = RendererCapabilities.current()
+            SurfaceEngine.installBackend(if (capabilities.irisViews()) IrisSurfacePipeline.INSTANCE
+                else SurfaceBackend.unavailable(capabilities.cameraFailure()))
+            if (capabilities.paintPbr()) IrisPaintPbr.register()
+            if (capabilities.surfacePbr()) IrisSurfacePbr.register()
+        }
+        SurfaceClient.initialize()
+        PaintClient.initialize()
 
     }
 
@@ -306,7 +337,7 @@ class TACZExpandsClient {
         return Pair(yawDeg, -pitchDeg)
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     fun onCameraSetup(event: ViewportEvent.ComputeCameraAngles) {
         val entity = event.camera.entity
         if (entity is EntityKineticBullet) {
@@ -330,9 +361,9 @@ class TACZExpandsClient {
     fun onClientTick(event: TickEvent.ClientTickEvent) {
         if (event.phase != TickEvent.Phase.END) return
         DynamicSoundManager.onClientTick()
+        SnowstormParticles.tick()
 
-
-        val player = Minecraft.getInstance().player ?: return
+        if (Minecraft.getInstance().player == null) return
 
         BeamRendererOverride.reset()
 
@@ -342,45 +373,18 @@ class TACZExpandsClient {
         FrostbiteOverlay.onClientTick()
 
         ScopeManager.onClientTick()
-
-        val cameraEntity = Minecraft.getInstance().cameraEntity
-
-        if (player != cameraEntity && cameraEntity is EntityKineticBullet) {
-            if (!cameraEntity.isAlive || cameraEntity.isRemoved) {
-                Minecraft.getInstance().cameraEntity = null
-                InputManager.sendCameraInput = false
-                InputManager.loadLocal()
-                return
-            }
-
-            InputManager.updateToServer()
-
-            InputManager.sendCameraInput = true
-        } else {
-            InputManager.sendCameraInput = false
-            InputManager.loadLocal()
-        }
-    }
-
-    var lastCameraEntity: EntityKineticBullet? = null
-
-    @SubscribeEvent
-    fun onClientCameraCheckTick(event: TickEvent.ClientTickEvent) {
-        if (event.phase != TickEvent.Phase.END) return
-        if (lastCameraEntity != null && Minecraft.getInstance().cameraEntity !is EntityKineticBullet) {
-            lastCameraEntity = null
-            NetworkManager.sendToServer(C2SActionKey(C2SActionKey.Action.UNBIND_CAMERA))
-        }
+        RemoteCameraSession.tick()
     }
 
     @SubscribeEvent
     fun onChangeDimension(event: EntityTravelToDimensionEvent) {
-        if (event.entity == Minecraft.getInstance().player) {
-            InputManager.sendCameraInput = false
-            InputManager.clear()
-        }
         HookManager.reset()
         CameraManager.reset()
+        if (event.entity == Minecraft.getInstance().player) {
+            RemoteCameraSession.close(false)
+            InputManager.clear()
+            ViewStateManager.invalidateSample()
+        }
     }
 
     @SubscribeEvent
@@ -436,18 +440,21 @@ class TACZExpandsClient {
     fun onLeaveServer(event: ClientPlayerNetworkEvent.LoggingOut) {
         VariableManager.reset()
         FlashOverlay.reset()
+        Flashlight.reset()
         GunContextManager.reset()
-        InputManager.sendCameraInput = false
-        InputManager.clear()
         ScopeManager.reset()
         ShakeManager.reset()
         rotations.clear()
         HookManager.reset()
-        CameraManager.reset()
+        CameraManager.reset(false)
+        RemoteCameraSession.close(false)
+        InputManager.clear()
+        ViewStateManager.reset()
         PlayerExtrasClient.reset()
         DynamicSoundManager.stopAll()
         CustomHUDOverlay.reset()
         RuntimeConfig.reset()
+        SnowstormParticles.clear()
     }
 
 
@@ -475,10 +482,7 @@ class TACZExpandsClient {
 
 
     fun onSetup(event: FMLCommonSetupEvent) {
-        try {
-            NetworkManager.init()
-        } catch (e: UnsatisfiedLinkError) {
-        }
+        NetworkManager.init()
     }
 
     fun onClientSetup(event: FMLClientSetupEvent) {
@@ -492,6 +496,8 @@ class TACZExpandsClient {
     }
 
     fun onRegisterResourceReload(event: RegisterClientReloadListenersEvent) {
+        SurfaceResources.registerReloadListeners(event)
+        PaintResources.registerReloadListeners(event)
         event.registerReloadListener(object : PreparableReloadListener {
             override fun reload(
                 stage: PreparableReloadListener.PreparationBarrier,
@@ -555,7 +561,7 @@ class TACZExpandsClient {
                             )
 
                         } catch (e: IOException) {
-                            e.printStackTrace()
+                            LOGGER.error("Failed to load Arcana shader resources", e)
                         }
                     }
                 }, gameExecutor).thenCompose(stage::wait)

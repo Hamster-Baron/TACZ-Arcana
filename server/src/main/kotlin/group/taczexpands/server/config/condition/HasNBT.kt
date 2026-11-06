@@ -28,6 +28,7 @@ data class HasNBT(val path: String = "{}", val data: String, val pathIsExpressio
 
 
         val nbtPath = NbtPathArgument.nbtPath().parse(StringReader(realPath))
+        if (nbtPath.countMatching(rootTag) == 0) return false
         val sources = nbtPath.get(rootTag)
 
         val realData = if (dataIsExpression) ExpressionHelper.initExpression(this.data, context, context.self).evaluate().stringValue else this.data

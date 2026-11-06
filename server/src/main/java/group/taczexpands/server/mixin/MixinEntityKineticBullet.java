@@ -1,21 +1,28 @@
 package group.taczexpands.server.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.tacz.guns.api.event.common.EntityHurtByGunEvent;
 import com.tacz.guns.config.common.AmmoConfig;
+import com.tacz.guns.config.util.AmmoBlockConfigRead;
 import com.tacz.guns.config.sync.SyncConfig;
 import com.tacz.guns.entity.EntityKineticBullet;
 import com.tacz.guns.particles.BulletHoleOption;
 import com.tacz.guns.resource.pojo.data.gun.BulletData;
+import com.tacz.guns.resource.pojo.data.gun.ExplosionData;
 import com.tacz.guns.resource.pojo.data.gun.ExtraDamage;
 import com.tacz.guns.resource.pojo.data.gun.GunData;
 import com.tacz.guns.util.TacHitResult;
+import group.taczexpands.common.accessor.IAccessorBullet;
 import group.taczexpands.common.accessor.IAccessorBulletData;
+import group.taczexpands.common.data.BulletExtraHolder;
 import group.taczexpands.common.data.HookType;
 import group.taczexpands.common.nbt.GunExtras;
 import group.taczexpands.common.util.BlockResistanceData;
-import group.taczexpands.server.accessor.IAccessorBullet;
+import group.taczexpands.server.accessor.IAccessorServerBullet;
 import group.taczexpands.server.accessor.IAccessorHitVec;
 import group.taczexpands.server.bullet.BulletManager;
+import group.taczexpands.server.bullet.BulletCollisionPass;
 import group.taczexpands.server.bullet.MissileManager;
 import group.taczexpands.server.compat.CompatHelper;
 import group.taczexpands.server.compat.tacztweaks.TACZTweaksCompat;
@@ -28,18 +35,27 @@ import group.taczexpands.server.mixin.accessor.IAccessorBlockRayTrace;
 import group.taczexpands.server.module.visual_break_progress.BreakProgressManager;
 import group.taczexpands.server.skill.HookManager;
 import group.taczexpands.server.util.ExtensionsKt;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.function.BiFunction;
+import kotlin.Pair;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Position;
+import net.minecraft.core.Vec3i;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseFireBlock;
@@ -52,9 +68,6 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.entity.IEntityAdditionalSpawnData;
 import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.IEventBus;
-import net.minecraftforge.registries.ForgeRegistries;
-import org.apache.commons.lang3.tuple.Pair;
-import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -65,13 +78,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.function.BiFunction;
-
 @Mixin(value = EntityKineticBullet.class, remap = false)
-public abstract class MixinEntityKineticBullet extends Projectile implements IEntityAdditionalSpawnData, IAccessorBullet {
+public abstract class MixinEntityKineticBullet extends Projectile
+        implements IEntityAdditionalSpawnData, IAccessorServerBullet, IAccessorBullet {
     @Shadow
     private boolean explosion;
     @Shadow
@@ -108,177 +117,175 @@ public abstract class MixinEntityKineticBullet extends Projectile implements IEn
     private int explosionDelayCount;
     @Shadow
     private Vec3 startPos;
+    @Shadow
+    private boolean igniteEntity;
+    @Shadow
+    private int igniteEntityTime;
+    @Unique
+    private BulletExtraData taczexpands$bulletExtraData = new BulletExtraData();
+    @Unique
+    private List<BlockPos> taczexpands$walkedBlocks = new ArrayList<BlockPos>();
+    @Unique
+    private int taczexpands$maxPenetration = 0;
+    @Unique
+    private int taczexpands$penetration = 0;
+    @Unique
+    private float taczexpands$damageFactor = 1.0f;
+    @Unique
+    private boolean taczexpands$generated = false;
+    @Unique
+    private int taczexpands$deflectionTimes = 0;
+    @Unique
+    private Vec3 taczexpands$overridePosition = null;
+    @Unique
+    private ItemStack taczexpands$gunItem = null;
+    @Unique
+    private boolean taczexpands$deflectionTick = false;
+    @Unique
+    private boolean taczexpands$impacted = false;
+    @Unique
+    private BulletCollisionPass taczexpands$collisionPass;
+    @Unique
+    private static final double TACZEXPANDS_MIN_VELOCITY_SQUARED = 0.01;
+    @Unique
+    private boolean taczexpands$decayedThisTick;
+    @Unique
+    private Vec3 taczexpands$rayEndpoint;
 
     @Shadow
-    protected abstract void onHitEntity(TacHitResult result, Vec3 startVec, Vec3 endVec);
+    protected abstract void onHitEntity(TacHitResult hit, Vec3 start, Vec3 end);
 
     @Shadow
-    protected abstract void onHitBlock(BlockHitResult result, Vec3 startVec, Vec3 endVec);
+    protected abstract void onHitBlock(BlockHitResult hit, Vec3 start, Vec3 end);
 
     @Shadow
     protected abstract void onBulletTick();
 
     @Shadow
-    public abstract float getDamage(Vec3 hitVec);
+    public abstract float getDamage(Vec3 hitPosition);
 
     @Shadow
-    protected abstract Pair<DamageSource, DamageSource> createDamageSources(EntityKineticBullet.MaybeMultipartEntity parts);
+    protected abstract org.apache.commons.lang3.tuple.Pair<DamageSource, DamageSource> createDamageSources(EntityKineticBullet.MaybeMultipartEntity target);
 
     @Shadow
-    private boolean igniteEntity;
-    @Shadow
-    private int igniteEntityTime;
+    protected abstract void tacAttackEntity(EntityKineticBullet.MaybeMultipartEntity target, float damage, org.apache.commons.lang3.tuple.Pair<DamageSource, DamageSource> damageSources);
 
-    @Shadow
-    protected abstract void tacAttackEntity(EntityKineticBullet.MaybeMultipartEntity parts, float damage, Pair<DamageSource, DamageSource> sources);
-
-    @Unique
-    private BulletExtraData taczexpands$bulletExtraData = new BulletExtraData();
-
-    @Unique
-    private List<BlockPos> taczexpands$walkedBlocks = new ArrayList<>();
-
-    @Unique
-    private int taczexpands$maxPenetration = 0;
-
-    @Unique
-    private int taczexpands$penetration = 0;
-
-    @Unique
-    private float taczexpands$damageFactor = 1.0f;
-
-    @Unique
-    private boolean taczexpands$generated = false;
-
-    @Unique
-    private int taczexpands$deflectionTimes = 0;
-
-    @Unique
-    private Vec3 taczexpands$overridePosition = null;
-
-    @Unique
-    private ItemStack taczexpands$gunItem = null;
-
-    protected MixinEntityKineticBullet(EntityType<? extends Projectile> p_37248_, Level p_37249_) {
-        super(p_37248_, p_37249_);
+    protected MixinEntityKineticBullet(EntityType<? extends Projectile> entityType, Level level) {
+        super(entityType, level);
     }
 
-    @Override
     public Vec3 taczexpands$getOverridePosition() {
-        return taczexpands$overridePosition;
+        return this.taczexpands$overridePosition;
     }
 
-    @Override
     public boolean taczexpands$isGenerated() {
-        return taczexpands$generated;
+        return this.taczexpands$generated;
     }
 
-    @Override
     public ItemStack taczexpands$getGunItem() {
-        return taczexpands$gunItem;
+        return this.taczexpands$gunItem;
     }
 
-    @Override
     public int taczexpands$getPenetration() {
-        return taczexpands$penetration;
+        return this.taczexpands$penetration;
     }
 
-    @Inject(method = "<init>(Lnet/minecraft/world/entity/EntityType;Lnet/minecraft/world/level/Level;Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/resources/ResourceLocation;Lnet/minecraft/resources/ResourceLocation;Lnet/minecraft/resources/ResourceLocation;ZLcom/tacz/guns/resource/pojo/data/gun/GunData;Lcom/tacz/guns/resource/pojo/data/gun/BulletData;)V", at = @At("TAIL"))
+    @Inject(method = "<init>(Lnet/minecraft/world/entity/EntityType;Lnet/minecraft/world/level/Level;Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/resources/ResourceLocation;Lnet/minecraft/resources/ResourceLocation;Lnet/minecraft/resources/ResourceLocation;ZLcom/tacz/guns/resource/pojo/data/gun/GunData;Lcom/tacz/guns/resource/pojo/data/gun/BulletData;)V", at = @At(value = "TAIL"))
     public void onPostInit(EntityType type, Level worldIn, LivingEntity throwerIn, ItemStack gunItem, ResourceLocation ammoId, ResourceLocation gunId, ResourceLocation gunDisplayId, boolean isTracerAmmo, GunData gunData, BulletData bulletData, CallbackInfo ci) {
         this.taczexpands$bulletExtraData.setBulletData(bulletData);
+        this.taczexpands$bulletExtraData.initializeProximityFuze((EntityKineticBullet)(Object)this);
         if (gunItem != null) {
-            var overrideAmount = GunExtras.INSTANCE.getOverrideBulletAmount(gunItem);
+            int overrideAmount = GunExtras.INSTANCE.getOverrideBulletAmount(gunItem);
             if (overrideAmount > 0) {
-                this.damageModifier = 1.0f / overrideAmount;
+                this.damageModifier = 1.0f / (float)overrideAmount;
             }
-
-            taczexpands$gunItem = gunItem.copy();
+            this.taczexpands$gunItem = gunItem.copy();
         }
-
-        taczexpands$maxPenetration = IAccessorBulletData.getBulletExtraHolder(bulletData).penetration;
-        taczexpands$penetration = taczexpands$maxPenetration;
-        MissileManager.INSTANCE.bulletInit((EntityKineticBullet) (Object) this);
+        this.taczexpands$penetration = this.taczexpands$maxPenetration = IAccessorBulletData.getBulletExtraHolder((BulletData)bulletData).penetration;
+        MissileManager.INSTANCE.bulletInit((EntityKineticBullet)(Object)this);
     }
 
-    @Override
     public void taczexpands$initCustomData(double x, double y, double z, float speed) {
-        taczexpands$generated = true;
-        var bulletData = taczexpands$bulletExtraData.getBulletData();
-        var extraDamage = bulletData.getExtraDamage();
+        this.taczexpands$generated = true;
+        BulletData bulletData = this.taczexpands$bulletExtraData.getBulletData();
+        ExtraDamage extraDamage = bulletData.getExtraDamage();
         if (extraDamage != null) {
-            armorIgnore = extraDamage.getArmorIgnore();
-            headShot = extraDamage.getHeadShotMultiplier();
-            knockback = bulletData.getKnockback();
-            damageAmount = extraDamage.getDamageAdjust();
+            this.armorIgnore = extraDamage.getArmorIgnore();
+            this.headShot = extraDamage.getHeadShotMultiplier();
+            this.knockback = bulletData.getKnockback();
+            LinkedList damageAdjust = extraDamage.getDamageAdjust();
+            if (damageAdjust != null && !damageAdjust.isEmpty()) {
+                this.damageAmount = new LinkedList(damageAdjust);
+            }
         } else {
-            armorIgnore = 0.0f;
-            headShot = 1.0f;
-            knockback = 0.0f;
-            damageAmount = new LinkedList<>();
+            this.armorIgnore = 0.0f;
+            this.headShot = 1.0f;
+            this.knockback = 0.0f;
+        }
+        if (this.damageAmount == null || this.damageAmount.isEmpty()) {
+            this.damageAmount = new LinkedList();
+            float baseDamage = (float)Mth.clamp((double)((double)bulletData.getDamageAmount() * (Double)SyncConfig.DAMAGE_BASE_MULTIPLIER.get()), (double)0.0, (double)3.4028234663852886E38);
+            this.damageAmount.add(new ExtraDamage.DistanceDamagePair(Float.MAX_VALUE, baseDamage));
         }
         this.speed = speed;
-        pierce = bulletData.getPierce();
-        var explosionData = bulletData.getExplosionData();
+        this.pierce = bulletData.getPierce();
+        ExplosionData explosionData = bulletData.getExplosionData();
         if (explosionData != null) {
             this.explosion = explosionData.isExplode();
-            this.explosionDamage = (float) Mth.clamp(explosionData.getDamage() * SyncConfig.DAMAGE_BASE_MULTIPLIER.get(), 0, Float.MAX_VALUE);
-            this.explosionRadius = Mth.clamp(explosionData.getRadius(), 0, Float.MAX_VALUE);
+            this.explosionDamage = (float)Mth.clamp((double)((double)explosionData.getDamage() * (Double)SyncConfig.DAMAGE_BASE_MULTIPLIER.get()), (double)0.0, (double)3.4028234663852886E38);
+            this.explosionRadius = Mth.clamp((float)explosionData.getRadius(), (float)0.0f, (float)Float.MAX_VALUE);
             this.explosionKnockback = explosionData.isKnockback();
-            int delayTickCount = (int) (explosionData.getDelay() * 20);
+            int delayTickCount = (int)(explosionData.getDelay() * 20.0f);
             if (delayTickCount < 0) {
                 delayTickCount = Integer.MAX_VALUE;
             }
-            this.explosionDestroyBlock = explosionData.isDestroyBlock() && AmmoConfig.EXPLOSIVE_AMMO_DESTROYS_BLOCK.get();
+            this.explosionDestroyBlock = explosionData.isDestroyBlock() && (Boolean)AmmoConfig.EXPLOSIVE_AMMO_DESTROYS_BLOCK.get() != false;
             this.explosionDelayCount = Math.max(delayTickCount, 1);
         } else {
             this.explosion = false;
         }
-
         this.setPos(x, y, z);
         this.startPos = this.position();
+        this.taczexpands$bulletExtraData.initializeProximityFuze((EntityKineticBullet)(Object)this);
     }
 
-
-    @Inject(method = "onHitBlock", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "onHitBlock", at = @At(value = "HEAD"), cancellable = true)
     private void taczexpands$onHitBlock$hookHit(BlockHitResult result, Vec3 startVec, Vec3 endVec, CallbackInfo ci) {
         if (result.getType() == HitResult.Type.MISS) {
             return;
         }
-
-        var extra = IAccessorBulletData.getBulletExtraHolder(taczexpands$bulletExtraData.getBulletData());
+        BulletExtraHolder extra = IAccessorBulletData.getBulletExtraHolder((BulletData)this.taczexpands$bulletExtraData.getBulletData());
         if (extra.hookData.isHook) {
             super.onHitBlock(result);
-
-            taczexpands$overridePosition = result.getLocation();
-            setDeltaMovement(taczexpands$overridePosition.subtract(startVec));
-
-            var owner = this.getOwner();
-            if (owner instanceof LivingEntity ownerLivingEntity) {
+            this.taczexpands$overridePosition = result.getLocation();
+            this.setDeltaMovement(this.taczexpands$overridePosition.subtract(startVec));
+            Entity owner = this.getOwner();
+            if (owner instanceof LivingEntity) {
+                LivingEntity ownerLivingEntity = (LivingEntity)owner;
                 if (extra.hookData.type != HookType.PULLING) {
-                    HookManager.INSTANCE.addHook((EntityKineticBullet) (Object) this, ownerLivingEntity, result, extra.hookData);
+                    HookManager.INSTANCE.addHook((EntityKineticBullet)(Object)this, ownerLivingEntity, result, extra.hookData);
                 }
             }
-
             this.discard();
             ci.cancel();
         }
     }
 
-    @Redirect(method = "onHitBlock", at = @At(value = "FIELD", target = "Lcom/tacz/guns/entity/EntityKineticBullet;explosion:Z", opcode = Opcodes.GETFIELD, ordinal = 0))
+    @Redirect(method = "onHitBlock", at = @At(value = "FIELD", target = "Lcom/tacz/guns/entity/EntityKineticBullet;explosion:Z", opcode = 180, ordinal = 0))
     private boolean taczexpands$onHitBlock$redirectExplosionCondition(EntityKineticBullet instance) {
-        var bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder(taczexpands$bulletExtraData.getBulletData());
-        return explosion && (!bulletExtraHolder.startExplosionDelayOnImpact || taczexpands$impacted);
+        BulletExtraHolder bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder((BulletData)this.taczexpands$bulletExtraData.getBulletData());
+        return this.explosion && (!bulletExtraHolder.startExplosionDelayOnImpact || this.taczexpands$impacted);
     }
 
     @Inject(method = "onHitBlock", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/entity/EntityKineticBullet;discard()V", ordinal = 0, remap = true))
     private void taczexpands$onHitBlock$injectDiscardBulletPos(BlockHitResult result, Vec3 startVec, Vec3 endVec, CallbackInfo ci) {
-        taczexpands$overridePosition = result.getLocation();
-        setDeltaMovement(taczexpands$overridePosition.subtract(startVec));
+        this.taczexpands$overridePosition = result.getLocation();
+        this.setDeltaMovement(this.taczexpands$overridePosition.subtract(startVec));
     }
 
     @Redirect(method = "onHitBlock", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;sendParticles(Lnet/minecraft/core/particles/ParticleOptions;DDDIDDDD)I", ordinal = 0, remap = true))
     private int taczexpands$onHitBlock$redirectSendParticles(ServerLevel instance, ParticleOptions pType, double pPosX, double pPosY, double pPosZ, int pParticleCount, double pXOffset, double pYOffset, double pZOffset, double pSpeed) {
-        var bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder(taczexpands$bulletExtraData.getBulletData());
+        BulletExtraHolder bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder((BulletData)this.taczexpands$bulletExtraData.getBulletData());
         if (bulletExtraHolder.renderNormalBulletHole) {
             return instance.sendParticles(pType, pPosX, pPosY, pPosZ, pParticleCount, pXOffset, pYOffset, pZOffset, pSpeed);
         }
@@ -287,64 +294,62 @@ public abstract class MixinEntityKineticBullet extends Projectile implements IEn
 
     @Inject(method = "onHitBlock", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/entity/EntityKineticBullet;discard()V", ordinal = 1, remap = true), cancellable = true)
     private void taczexpands$onHitBlock$injectFinalDiscard(BlockHitResult result, Vec3 startVec, Vec3 endVec, CallbackInfo ci) {
-        if (!explosion) {
-            taczexpands$overridePosition = result.getLocation();
-            setDeltaMovement(taczexpands$overridePosition.subtract(startVec));
+        if (!this.explosion) {
+            this.taczexpands$overridePosition = result.getLocation();
+            this.setDeltaMovement(this.taczexpands$overridePosition.subtract(startVec));
         } else {
-            taczexpands$overridePosition = null;
+            this.taczexpands$overridePosition = null;
             ci.cancel();
         }
     }
 
-    @Inject(method = "onHitEntity", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "onHitEntity", at = @At(value = "HEAD"), cancellable = true)
     private void taczexpands$onHitEntity$hookHit(TacHitResult result, Vec3 startVec, Vec3 endVec, CallbackInfo ci) {
-        taczexpands$impacted = true;
-
-        var extra = IAccessorBulletData.getBulletExtraHolder(taczexpands$bulletExtraData.getBulletData());
-
+        this.taczexpands$impacted = true;
+        BulletExtraHolder extra = IAccessorBulletData.getBulletExtraHolder((BulletData)this.taczexpands$bulletExtraData.getBulletData());
         if (extra.hookData.isHook) {
-            var owner = this.getOwner();
-            var target = result.getEntity();
-            if (owner instanceof LivingEntity ownerLivingEntity && target instanceof LivingEntity targetLivingEntity) {
-                taczexpands$overridePosition = result.getLocation();
-                setDeltaMovement(taczexpands$overridePosition.subtract(startVec));
-                HookManager.INSTANCE.addHook((EntityKineticBullet) (Object) this, ownerLivingEntity, targetLivingEntity, extra.hookData);
-
-                this.discard();
-                ci.cancel();
+            Entity owner = this.getOwner();
+            Entity target = result.getEntity();
+            if (owner instanceof LivingEntity) {
+                LivingEntity ownerLivingEntity = (LivingEntity)owner;
+                if (target instanceof LivingEntity) {
+                    LivingEntity targetLivingEntity = (LivingEntity)target;
+                    this.taczexpands$overridePosition = result.getLocation();
+                    this.setDeltaMovement(this.taczexpands$overridePosition.subtract(startVec));
+                    HookManager.INSTANCE.addHook((EntityKineticBullet)(Object)this, ownerLivingEntity, targetLivingEntity, extra.hookData);
+                    this.discard();
+                    ci.cancel();
+                }
             }
         }
-
-        taczexpands$overridePosition = result.getLocation();
+        this.taczexpands$overridePosition = result.getLocation();
     }
 
     @Redirect(method = "onHitEntity", at = @At(value = "INVOKE", target = "Lnet/minecraftforge/eventbus/api/IEventBus;post(Lnet/minecraftforge/eventbus/api/Event;)Z", remap = false))
     private boolean taczexpands$onHitEntity$redirectPreEventPost(IEventBus eventBus, Event event) {
-        if (event instanceof EntityHurtByGunEvent.Pre preEvent) {
-            if (((IAccessorHitVec) preEvent).taczexpands$getHitVec() == null) {
-                ((IAccessorHitVec) preEvent).taczexpands$setHitVec(taczexpands$overridePosition);
+        if (event instanceof EntityHurtByGunEvent.Pre) {
+            boolean cancelled;
+            EntityHurtByGunEvent.Pre preEvent = (EntityHurtByGunEvent.Pre)event;
+            if (((IAccessorHitVec)preEvent).taczexpands$getHitVec() == null) {
+                ((IAccessorHitVec)preEvent).taczexpands$setHitVec(this.taczexpands$overridePosition);
             }
-
-            boolean cancelled = eventBus.post(preEvent);
-
-            if (cancelled) {
-                taczexpands$overridePosition = null;
+            if (cancelled = eventBus.post((Event)preEvent)) {
+                this.taczexpands$overridePosition = null;
             } else {
-                taczexpands$overridePosition = null;
-                taczexpands$bulletExtraData.addHitEntity(preEvent, false);
+                this.taczexpands$overridePosition = null;
+                this.taczexpands$bulletExtraData.addHitEntity(preEvent, false);
             }
             return cancelled;
         }
-
         return eventBus.post(event);
     }
 
-    @Redirect(method = "onHitEntity", at = @At(value = "FIELD", target = "Lcom/tacz/guns/entity/EntityKineticBullet;explosion:Z", opcode = org.objectweb.asm.Opcodes.GETFIELD, ordinal = 0))
+    @Redirect(method = "onHitEntity", at = @At(value = "FIELD", target = "Lcom/tacz/guns/entity/EntityKineticBullet;explosion:Z", opcode = 180, ordinal = 0))
     private boolean taczexpands$onHitEntity$redirectExplosionCondition(EntityKineticBullet instance, TacHitResult result) {
-        var bulletData = taczexpands$bulletExtraData.getBulletData();
-        var bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder(bulletData);
-        if (explosion && (!bulletExtraHolder.startExplosionDelayOnImpact || taczexpands$impacted)) {
-            taczexpands$overridePosition = result.getLocation();
+        BulletData bulletData = this.taczexpands$bulletExtraData.getBulletData();
+        BulletExtraHolder bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder((BulletData)bulletData);
+        if (this.explosion && (!bulletExtraHolder.startExplosionDelayOnImpact || this.taczexpands$impacted)) {
+            this.taczexpands$overridePosition = result.getLocation();
             return true;
         }
         return false;
@@ -352,330 +357,352 @@ public abstract class MixinEntityKineticBullet extends Projectile implements IEn
 
     @Inject(method = "onHitEntity", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/util/ExplodeUtil;createExplosion(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/entity/Entity;FFZZLnet/minecraft/world/phys/Vec3;)V", shift = At.Shift.AFTER))
     private void taczexpands$onHitEntity$injectAfterExplosion(TacHitResult result, Vec3 startVec, Vec3 endVec, CallbackInfo ci) {
-        taczexpands$overridePosition = null;
+        this.taczexpands$overridePosition = null;
     }
 
     @Redirect(method = "onHitEntity", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;isDeadOrDying()Z", remap = true))
     private boolean taczexpands$onHitEntity$redirectIsDeadOrDying(LivingEntity livingCore) {
         boolean isDead = livingCore.isDeadOrDying();
         if (isDead) {
-            taczexpands$overridePosition = null;
+            this.taczexpands$overridePosition = null;
         }
         return isDead;
     }
 
-
-
-
-
-    @Override
     public void taczexpands$onDiscard() {
-        if (getRemovalReason() != RemovalReason.DISCARDED) {
-            MinecraftForge.EVENT_BUS.post(new BulletDiscardEvent((EntityKineticBullet) (Object) this, taczexpands$bulletExtraData));
+        if (this.getRemovalReason() != Entity.RemovalReason.DISCARDED) {
+            MinecraftForge.EVENT_BUS.post((Event)new BulletDiscardEvent((EntityKineticBullet)(Object)this, this.taczexpands$bulletExtraData));
         }
     }
 
-    @Override
     public BulletExtraData taczexpands$getBulletExtraData() {
-        return taczexpands$bulletExtraData;
+        return this.taczexpands$bulletExtraData;
     }
 
-    @Unique
-    private boolean taczexpands$deflectionTick = false;
+    @Inject(method = "tick", at = @At("HEAD"), remap = true)
+    private void taczexpands$clearTickDecay(CallbackInfo ci) {
+        this.taczexpands$decayedThisTick = false;
+    }
 
-    @Unique
-    private boolean taczexpands$impacted = false;
+    @Override
+    public Vec3 taczexpands$getDecayEndpoint() {
+        return this.taczexpands$decayedThisTick && !this.isRemoved() ? this.taczexpands$rayEndpoint : null;
+    }
 
+    @WrapOperation(method = "tick", at = @At(value = "INVOKE",
+        target = "Lcom/tacz/guns/entity/EntityKineticBullet;setPos(DDD)V", remap = true), remap = true)
+    private void taczexpands$moveToRayEndpoint(EntityKineticBullet bullet, double x, double y, double z,
+            Operation<Void> original) {
+        Vec3 endpoint = this.taczexpands$getDecayEndpoint();
+        if (endpoint != null) {
+            original.call(bullet, endpoint.x, endpoint.y, endpoint.z);
+        } else {
+            original.call(bullet, x, y, z);
+        }
+    }
 
-    @Inject(method = "onBulletTick", at = @At("HEAD"))
+    @Inject(method = "onBulletTick", at = @At(value = "HEAD"))
     private void taczexpands$onBulletTick$injectHead(CallbackInfo ci) {
         if (!this.level().isClientSide()) {
-            taczexpands$deflectionTick = false;
+            this.taczexpands$deflectionTick = false;
+            this.taczexpands$collisionPass = null;
+            this.taczexpands$rayEndpoint = null;
         }
     }
 
-
-    @Redirect(method = "onBulletTick", at = @At(value = "FIELD", target = "Lcom/tacz/guns/entity/EntityKineticBullet;explosionDelayCount:I", opcode = Opcodes.GETFIELD, ordinal = 0))
-    private int taczexpands$onBulletTick$redirectExplosionDelayCondition(EntityKineticBullet instance) {
-        var bulletData = taczexpands$bulletExtraData.getBulletData();
-        var bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder(bulletData);
-
-        if (explosionDelayCount > 0 && (taczexpands$impacted || !bulletExtraHolder.startExplosionDelayOnImpact)) {
-            return explosionDelayCount;
-        }
-        return 0;
+    @Redirect(method = "onBulletTick", at = @At(value = "FIELD", target = "Lcom/tacz/guns/entity/EntityKineticBullet;explosion:Z", opcode = 180, ordinal = 0))
+    private boolean taczexpands$onBulletTick$redirectExplosionDelayCondition(EntityKineticBullet instance) {
+        BulletData bulletData = this.taczexpands$bulletExtraData.getBulletData();
+        BulletExtraHolder bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder((BulletData)bulletData);
+        return this.explosion && (this.taczexpands$impacted || !bulletExtraHolder.startExplosionDelayOnImpact);
     }
 
     @Inject(method = "onBulletTick", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/util/ExplodeUtil;createExplosion(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/entity/Entity;FFZZLnet/minecraft/world/phys/Vec3;)V", shift = At.Shift.AFTER))
     private void taczexpands$onBulletTick$injectAfterTickExplosion(CallbackInfo ci) {
-        this.setDeltaMovement(new Vec3(0.0D, 0.0D, 0.0D));
+        this.setDeltaMovement(new Vec3(0.0, 0.0, 0.0));
     }
-
 
     @Inject(method = "onBulletTick", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/entity/EntityKineticBullet;getDeltaMovement()Lnet/minecraft/world/phys/Vec3;", ordinal = 0, remap = true), cancellable = true)
     private void taczexpands$onBulletTick$injectVelocityCheck(CallbackInfo ci) {
-        if (this.getDeltaMovement().lengthSqr() < 0.01) {
+        if (this.getDeltaMovement().lengthSqr() < TACZEXPANDS_MIN_VELOCITY_SQUARED) {
             ci.cancel();
         }
     }
 
     @Redirect(method = "onBulletTick", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/util/block/BlockRayTrace;rayTraceBlocks(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/level/ClipContext;)Lnet/minecraft/world/phys/BlockHitResult;"))
     private BlockHitResult taczexpands$onBulletTick$redirectRayTraceBlocks(Level level, ClipContext context) {
-        return taczexpands$redirectRayTraceBlocks(level, context);
+        return this.taczexpands$redirectRayTraceBlocks(level, context);
     }
 
-    @Inject(
-            method = "onBulletTick",
-            at = @At(value = "FIELD",
-                    target = "Lcom/tacz/guns/entity/EntityKineticBullet;pierce:I",
-                    opcode = Opcodes.GETFIELD,
-                    ordinal = 0),
-            locals = LocalCapture.CAPTURE_FAILHARD,
-            cancellable = true)
+    @Inject(method = "onBulletTick", at = @At(value = "FIELD", target = "Lcom/tacz/guns/entity/EntityKineticBullet;pierce:I", opcode = 180, ordinal = 0), locals = LocalCapture.CAPTURE_FAILHARD, cancellable = true)
     private void injectDeflectionBeforeHitEntities(CallbackInfo ci, Vec3 startVec, Vec3 endVec, HitResult result, BlockHitResult resultB, List hitEntities) {
-        if (taczexpands$deflectionTick) {
+        if (this.taczexpands$collisionPass != null && this.getRemovalReason() != null) {
+            this.taczexpands$collisionPass = null;
+            ci.cancel();
+            return;
+        }
+        if (this.taczexpands$deflectionTick) {
+            this.taczexpands$collisionPass = null;
             this.setPos(endVec);
             Vec3 movement = this.getDeltaMovement();
             double x = movement.x;
             double y = movement.y;
             double z = movement.z;
             double distance = movement.horizontalDistance();
-            this.setYRot((float) Math.toDegrees(Mth.atan2(x, z)));
-            this.setXRot((float) Math.toDegrees(Mth.atan2(y, distance)));
+            this.setYRot((float)Math.toDegrees(Mth.atan2((double)x, (double)z)));
+            this.setXRot((float)Math.toDegrees(Mth.atan2((double)y, (double)distance)));
             this.yRotO = this.getYRot();
             this.xRotO = this.getXRot();
-
-            BulletManager.INSTANCE.notify((EntityKineticBullet) (Object) this);
-            onBulletTick();
+            BulletManager.INSTANCE.notify((EntityKineticBullet)(Object)this);
+            this.onBulletTick();
+            ci.cancel();
+        } else if (this.taczexpands$collisionPass != null) {
+            // The ordered pass consumes the EntityUtil hit chain for block intersections.
+            // Delegate unobstructed segments to TacZ's entity loop.
+            this.taczexpands$collisionPass = null;
+            this.onHitBlock(resultB, startVec, endVec);
             ci.cancel();
         }
     }
 
     @Inject(method = "onBulletTick", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/entity/EntityKineticBullet;discard()V", ordinal = 1, remap = true), locals = LocalCapture.CAPTURE_FAILHARD)
-    private void taczexpands$onBulletTick$injectPierceDiscard(CallbackInfo ci, Vec3 startVec, Vec3 endVec, HitResult result, BlockHitResult resultB, List hitEntities, EntityKineticBullet.EntityResult[] hitEntityResult, EntityKineticBullet.EntityResult[] var7, int var8, int var9, EntityKineticBullet.EntityResult entityResult) {
-        taczexpands$overridePosition = entityResult.getHitPos();
-        this.setDeltaMovement(taczexpands$overridePosition.subtract(startVec));
+    private void taczexpands$onBulletTick$injectPierceDiscard(CallbackInfo ci, Vec3 startVec, Vec3 endVec, HitResult result, BlockHitResult resultB, List hitEntities, EntityKineticBullet.EntityResult[] hitEntityResult, EntityKineticBullet.EntityResult[] entityResults, int resultCount, int resultIndex, EntityKineticBullet.EntityResult entityResult) {
+        this.taczexpands$overridePosition = entityResult.getHitPos();
+        this.setDeltaMovement(this.taczexpands$overridePosition.subtract(startVec));
     }
 
     @Redirect(method = "onBulletTick", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/entity/EntityKineticBullet;onHitEntity(Lcom/tacz/guns/util/TacHitResult;Lnet/minecraft/world/phys/Vec3;Lnet/minecraft/world/phys/Vec3;)V"))
     public void taczexpands$onBulletTick$redirectOnHitEntity(EntityKineticBullet instance, TacHitResult result, Vec3 startVec, Vec3 endVec) {
         this.onHitEntity(result, startVec, endVec);
         if (CompatHelper.INSTANCE.hasTACZTweaks()) {
-            TACZTweaksCompat.INSTANCE.handleHitEntity((EntityKineticBullet) (Object) this, new EntityKineticBullet.EntityResult(result.getEntity(), result.getLocation(), result.isHeadshot()), pierce - 1 > 0, !result.getEntity().isAlive());
+            TACZTweaksCompat.INSTANCE.handleHitEntity((EntityKineticBullet)(Object)this, new EntityKineticBullet.EntityResult(result.getEntity(), result.getLocation(), result.isHeadshot()), this.pierce - 1 > 0, !result.getEntity().isAlive());
         }
     }
 
-
-
-
+    @Unique
+    private boolean taczexpands$hitOrderedEntity(EntityKineticBullet.EntityResult result, Vec3 startVec, Vec3 endVec) {
+        this.taczexpands$onBulletTick$redirectOnHitEntity((EntityKineticBullet)(Object)this,
+            new TacHitResult(result), startVec, endVec);
+        // Consume pierce and check discard after the damage event, including cancelled events.
+        --this.pierce;
+        if (this.pierce < 1 || this.explosion) {
+            this.taczexpands$overridePosition = result.getHitPos();
+            this.setDeltaMovement(this.taczexpands$overridePosition.subtract(startVec));
+            this.discard();
+        }
+        return this.getRemovalReason() != null;
+    }
 
     @Unique
     public BlockHitResult taczexpands$redirectRayTraceBlocks(Level level, ClipContext context) {
         if (CompatHelper.INSTANCE.hasTACZTweaks()) {
             TACZTweaksCompat.INSTANCE.initBulletRayTracer(level, context);
         }
-
         BiFunction<ClipContext, BlockPos, BlockHitResult> taczexpandsRayTraceFunc = (rayTraceContext, blockPos) -> {
             BlockState blockState = level.getBlockState(blockPos);
-            List<String> ids = AmmoConfig.PASS_THROUGH_BLOCKS.get();
-            ResourceLocation blockId = ForgeRegistries.BLOCKS.getKey(blockState.getBlock());
-            if (blockId != null && ids.contains(blockId.toString())) {
+            if (AmmoBlockConfigRead.canPassThrough(blockState)) {
                 return null;
             }
             if (IAccessorBlockRayTrace.getIGNORES().test(blockState)) {
                 return null;
             }
-
-            var blockHitResult = IAccessorBlockRayTrace.getBlockHitResult(level, rayTraceContext, blockPos, blockState);
-
-            if (blockHitResult != null && blockHitResult.getType() != BlockHitResult.Type.MISS) {
-                if (taczexpands$walkedBlocks.contains(blockPos)) {
+            BlockHitResult blockHitResult = IAccessorBlockRayTrace.getBlockHitResult((Level)level, (ClipContext)rayTraceContext, (BlockPos)blockPos, (BlockState)blockState);
+            if (blockHitResult != null && blockHitResult.getType() != HitResult.Type.MISS) {
+                if (this.taczexpands$walkedBlocks.contains(blockPos)) {
                     return null;
                 }
-
-                taczexpands$impacted = true;
-
-                var bulletExtraData = taczexpands$getBulletExtraData();
-                var bulletData = bulletExtraData.getBulletData();
-                var bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder(bulletData);
-                var resistance = ExtensionsKt.getBlockResistance(bulletExtraHolder, blockState);
-
+                BulletCollisionPass hits = this.taczexpands$collisionPass;
+                if (hits == null) {
+                    this.taczexpands$collisionPass = hits = new BulletCollisionPass((EntityKineticBullet)(Object)this,
+                        rayTraceContext.getFrom(), rayTraceContext.getTo(), () -> this.pierce <= 1 || this.explosion,
+                        (result, limit) -> this.taczexpands$hitOrderedEntity(result, rayTraceContext.getFrom(), limit));
+                }
+                int beforeHits = hits.hitCount();
+                if (hits.consumeTo(blockHitResult.getLocation())) return blockHitResult;
+                if (hits.hitCount() != beforeHits) {
+                    // A nearer entity's synchronous event may destroy/change this
+                    // block. Re-read only when such an event actually ran.
+                    blockState = level.getBlockState(blockPos);
+                    if (AmmoBlockConfigRead.canPassThrough(blockState)
+                            || IAccessorBlockRayTrace.getIGNORES().test(blockState)) return null;
+                    blockHitResult = IAccessorBlockRayTrace.getBlockHitResult(level, rayTraceContext, blockPos, blockState);
+                    if (blockHitResult == null || blockHitResult.getType() == HitResult.Type.MISS) return null;
+                }
+                this.taczexpands$impacted = true;
+                BulletExtraData bulletExtraData = this.taczexpands$getBulletExtraData();
+                BulletData bulletData = bulletExtraData.getBulletData();
+                BulletExtraHolder bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder((BulletData)bulletData);
+                BlockResistanceData resistance = ExtensionsKt.getBlockResistance((BulletExtraHolder)bulletExtraHolder, (BlockState)blockState);
                 if (resistance == null) {
                     return blockHitResult;
                 }
-
-                if (taczexpands$penetration > 0) {
-                    if (taczexpands$penetration >= resistance.getResistance()) {
-                        var event = new BulletPenetrateEvent((EntityKineticBullet) (Object) this, blockHitResult);
-                        taczexpands$overridePosition = blockHitResult.getLocation();
-                        MinecraftForge.EVENT_BUS.post(event);
-                        taczexpands$overridePosition = null;
+                if (this.taczexpands$penetration > 0) {
+                    Level patt46274$temp;
+                    if (this.taczexpands$penetration >= resistance.getResistance()) {
+                        BulletPenetrateEvent event = new BulletPenetrateEvent((EntityKineticBullet)(Object)this, blockHitResult);
+                        this.taczexpands$overridePosition = blockHitResult.getLocation();
+                        MinecraftForge.EVENT_BUS.post((Event)event);
+                        this.taczexpands$overridePosition = null;
                         if (!event.isCanceled()) {
-                            taczexpands$penetration -= resistance.getResistance();
-
-                            if (bulletExtraHolder.penetrationDecay && taczexpands$maxPenetration > 0) {
-                                var factor = taczexpands$penetration / (float) taczexpands$maxPenetration;
-                                factor = Mth.clamp(factor, 0.0f, 1.0f);
-                                taczexpands$damageFactor *= factor;
-                                var deltaMovement = getDeltaMovement();
-                                setDeltaMovement(deltaMovement.scale(factor));
+                            boolean shouldDestroyBlock;
+                            this.taczexpands$penetration -= resistance.getResistance();
+                            boolean stopped = false;
+                            if (bulletExtraHolder.penetrationDecay && this.taczexpands$maxPenetration > 0) {
+                                float factor = (float)this.taczexpands$penetration / (float)this.taczexpands$maxPenetration;
+                                factor = Mth.clamp((float)factor, (float)0.0f, (float)1.0f);
+                                this.taczexpands$damageFactor *= factor;
+                                Vec3 deltaMovement = this.getDeltaMovement();
+                                this.setDeltaMovement(deltaMovement.scale((double)factor));
+                                this.taczexpands$decayedThisTick = true;
+                                stopped = this.getDeltaMovement().lengthSqr() < TACZEXPANDS_MIN_VELOCITY_SQUARED;
                             }
-
-
-                            var shouldDestroyBlock = (ServerConfig.INSTANCE.getShouldDestroyBlock().get() || resistance.getBypassGlobalDestroyLimit()) && resistance.getShouldDestroyBlock();
-
+                            BlockHitResult terminalHit = blockHitResult;
+                            if (stopped) {
+                                BlockHitResult backface = IAccessorBlockRayTrace.getBlockHitResult(level,
+                                    new ClipContext(rayTraceContext.getTo(), rayTraceContext.getFrom(),
+                                        ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this), blockPos, blockState);
+                                if (backface != null && backface.getType() != HitResult.Type.MISS) {
+                                    terminalHit = backface;
+                                }
+                            }
+                            boolean bl = shouldDestroyBlock = ((Boolean)ServerConfig.INSTANCE.getShouldDestroyBlock().get() != false || resistance.getBypassGlobalDestroyLimit()) && resistance.getShouldDestroyBlock();
                             if (shouldDestroyBlock) {
-                                level.levelEvent(2001, blockPos, Block.getId(blockState));
-                                level.destroyBlock(blockPos, false, getOwner());
-                                return taczexpands$tryDeflection(blockHitResult, resistance) ? blockHitResult : null;
-                            } else if (resistance.getParticleOnPenetrate()) {
-                                level.levelEvent(2001, blockPos, Block.getId(blockState));
+                                level.levelEvent(2001, blockPos, Block.getId((BlockState)blockState));
+                                level.destroyBlock(blockPos, false, this.getOwner());
+                                if (stopped) return terminalHit;
+                                return this.taczexpands$tryDeflection(blockHitResult, resistance) ? blockHitResult : null;
                             }
-
-                            taczexpands$walkedBlocks.add(new BlockPos(blockPos));
-
+                            if (resistance.getParticleOnPenetrate()) {
+                                level.levelEvent(2001, blockPos, Block.getId((BlockState)blockState));
+                            }
+                            this.taczexpands$walkedBlocks.add(new BlockPos((Vec3i)blockPos));
                             super.onHitBlock(blockHitResult);
-
-
-                            if (this.level() instanceof ServerLevel serverLevel) {
-                                var result = blockHitResult;
+                            Level patt43175$temp = this.level();
+                            if (patt43175$temp instanceof ServerLevel) {
+                                BlockHitResult reverseBlockHitResult;
+                                ServerLevel serverLevel = (ServerLevel)patt43175$temp;
+                                BlockHitResult result = blockHitResult;
                                 BlockPos pos = result.getBlockPos();
                                 Vec3 hitVec = result.getLocation();
                                 if (bulletExtraHolder.renderPenetrationBulletHole) {
-                                    BulletHoleOption bulletHoleOption = new BulletHoleOption(result.getDirection(), new BlockPos(blockPos), this.ammoId.toString(), this.gunId.toString(), this.gunDisplayId.toString());
-                                    serverLevel.sendParticles(bulletHoleOption, hitVec.x, hitVec.y, hitVec.z, 1, 0, 0, 0, 0);
+                                    BulletHoleOption bulletHoleOption = new BulletHoleOption(result.getDirection(), new BlockPos((Vec3i)blockPos), this.ammoId.toString(), this.gunId.toString(), this.gunDisplayId.toString());
+                                    serverLevel.sendParticles((ParticleOptions)bulletHoleOption, hitVec.x, hitVec.y, hitVec.z, 1, 0.0, 0.0, 0.0, 0.0);
                                 }
                                 if (this.igniteBlock) {
-                                    serverLevel.sendParticles(ParticleTypes.LAVA, hitVec.x, hitVec.y, hitVec.z, 1, 0, 0, 0, 0);
+                                    serverLevel.sendParticles((ParticleOptions)ParticleTypes.LAVA, hitVec.x, hitVec.y, hitVec.z, 1, 0.0, 0.0, 0.0, 0.0);
                                 }
-                                if (bulletExtraHolder.renderPenetrationBulletHole) {
-                                    var reverseBlockHitResult = IAccessorBlockRayTrace.getBlockHitResult(level, new ClipContext(rayTraceContext.getTo(), rayTraceContext.getFrom(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this), blockPos, blockState);
-                                    if (reverseBlockHitResult != null && reverseBlockHitResult.getType() != BlockHitResult.Type.MISS) {
-                                        var reverseHitVec = reverseBlockHitResult.getLocation();
-                                        BulletHoleOption reverseBulletHoleOption = new BulletHoleOption(reverseBlockHitResult.getDirection(), new BlockPos(blockPos), this.ammoId.toString(), this.gunId.toString(), this.gunDisplayId.toString());
-                                        serverLevel.sendParticles(reverseBulletHoleOption, reverseHitVec.x, reverseHitVec.y, reverseHitVec.z, 1, 0, 0, 0, 0);
-                                    }
+                                if (!stopped && bulletExtraHolder.renderPenetrationBulletHole && (reverseBlockHitResult = IAccessorBlockRayTrace.getBlockHitResult((Level)level, (ClipContext)new ClipContext(rayTraceContext.getTo(), rayTraceContext.getFrom(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, (Entity)this), (BlockPos)blockPos, (BlockState)blockState)) != null && reverseBlockHitResult.getType() != HitResult.Type.MISS) {
+                                    Vec3 reverseHitVec = reverseBlockHitResult.getLocation();
+                                    BulletHoleOption reverseBulletHoleOption = new BulletHoleOption(reverseBlockHitResult.getDirection(), new BlockPos((Vec3i)blockPos), this.ammoId.toString(), this.gunId.toString(), this.gunDisplayId.toString());
+                                    serverLevel.sendParticles((ParticleOptions)reverseBulletHoleOption, reverseHitVec.x, reverseHitVec.y, reverseHitVec.z, 1, 0.0, 0.0, 0.0, 0.0);
                                 }
-
-
-                                if (this.igniteBlock && AmmoConfig.IGNITE_BLOCK.get()) {
+                                if (this.igniteBlock && ((Boolean)AmmoConfig.IGNITE_BLOCK.get()).booleanValue()) {
                                     BlockPos offsetPos = pos.relative(result.getDirection());
-                                    if (BaseFireBlock.canBePlacedAt(this.level(), offsetPos, result.getDirection())) {
-                                        BlockState fireState = BaseFireBlock.getState(this.level(), offsetPos);
-                                        this.level().setBlock(offsetPos, fireState, Block.UPDATE_ALL_IMMEDIATE);
-                                        ((ServerLevel) this.level()).sendParticles(ParticleTypes.LAVA, hitVec.x - 1.0 + this.random.nextDouble() * 2.0, hitVec.y, hitVec.z - 1.0 + this.random.nextDouble() * 2.0, 4, 0, 0, 0, 0);
+                                    if (BaseFireBlock.canBePlacedAt((Level)this.level(), (BlockPos)offsetPos, (Direction)result.getDirection())) {
+                                        BlockState fireState = BaseFireBlock.getState((BlockGetter)this.level(), (BlockPos)offsetPos);
+                                        this.level().setBlock(offsetPos, fireState, 11);
+                                        ((ServerLevel)this.level()).sendParticles((ParticleOptions)ParticleTypes.LAVA, hitVec.x - 1.0 + this.random.nextDouble() * 2.0, hitVec.y, hitVec.z - 1.0 + this.random.nextDouble() * 2.0, 4, 0.0, 0.0, 0.0, 0.0);
                                     }
                                 }
                             }
-
-
-                            return taczexpands$tryDeflection(blockHitResult, resistance) ? blockHitResult : null;
+                            if (stopped) return terminalHit;
+                            return this.taczexpands$tryDeflection(blockHitResult, resistance) ? blockHitResult : null;
                         }
                     }
-
-
-                    if (this.level() instanceof ServerLevel serverLevel) {
-                        var shouldDestroyBlock = (ServerConfig.INSTANCE.getShouldDestroyBlock().get() || resistance.getBypassGlobalDestroyLimit()) && resistance.getShouldDestroyBlock();
+                    if ((patt46274$temp = this.level()) instanceof ServerLevel) {
+                        boolean shouldDestroyBlock;
+                        ServerLevel serverLevel = (ServerLevel)patt46274$temp;
+                        boolean bl = shouldDestroyBlock = ((Boolean)ServerConfig.INSTANCE.getShouldDestroyBlock().get() != false || resistance.getBypassGlobalDestroyLimit()) && resistance.getShouldDestroyBlock();
                         if (shouldDestroyBlock) {
-                            var damage = taczexpands$penetration / (float) resistance.getResistance();
-                            var pair = BreakProgressManager.INSTANCE.updateDamage(serverLevel, blockPos, damage);
-                            var remainingPenetration = pair.getFirst();
-                            var isBroken = pair.getSecond();
-                            if (isBroken) {
-                                level.levelEvent(2001, blockPos, Block.getId(blockState));
-                                level.destroyBlock(blockPos, false, getOwner());
-                                taczexpands$walkedBlocks.add(new BlockPos(blockPos));
-                                taczexpands$penetration = (int) (remainingPenetration * resistance.getResistance());
-                                return taczexpands$tryDeflection(blockHitResult, resistance) ? blockHitResult : null;
+                            float damage = (float)this.taczexpands$penetration / (float)resistance.getResistance();
+                            Pair<Float, Boolean> pair = BreakProgressManager.INSTANCE.updateDamage(serverLevel, blockPos, damage);
+                            Float remainingPenetration = (Float)pair.getFirst();
+                            Boolean isBroken = (Boolean)pair.getSecond();
+                            if (isBroken.booleanValue()) {
+                                level.levelEvent(2001, blockPos, Block.getId((BlockState)blockState));
+                                level.destroyBlock(blockPos, false, this.getOwner());
+                                this.taczexpands$walkedBlocks.add(new BlockPos((Vec3i)blockPos));
+                                this.taczexpands$penetration = (int)(remainingPenetration.floatValue() * (float)resistance.getResistance());
+                                return this.taczexpands$tryDeflection(blockHitResult, resistance) ? blockHitResult : null;
                             }
                         }
                     } else {
-                        taczexpands$penetration = 0;
+                        this.taczexpands$penetration = 0;
                     }
-
                 }
-
-                taczexpands$tryDeflection(blockHitResult, resistance);
+                this.taczexpands$tryDeflection(blockHitResult, resistance);
             }
-
             return blockHitResult;
         };
-
-        var hitResult = IAccessorBlockRayTrace.performRayTrace(context, (clipContext, blockPos) -> {
-            var taczexpandsResult = taczexpandsRayTraceFunc.apply(clipContext, blockPos);
-            if (taczexpandsResult != null && CompatHelper.INSTANCE.hasTACZTweaks()) {
-                if (taczexpandsResult.getType() != BlockHitResult.Type.MISS) {
-                    var blockState = level.getBlockState(taczexpandsResult.getBlockPos());
-                    var result = TACZTweaksCompat.INSTANCE.handleHitBlock((EntityKineticBullet) (Object) this, taczexpandsResult, blockState);
-                    return result;
-                }
+        BlockHitResult hitResult = (BlockHitResult)IAccessorBlockRayTrace.performRayTrace((ClipContext)context, (clipContext, blockPos) -> {
+            BlockHitResult taczexpandsResult = (BlockHitResult)taczexpandsRayTraceFunc.apply((ClipContext)clipContext, (BlockPos)blockPos);
+            if ((this.taczexpands$collisionPass == null || !this.taczexpands$collisionPass.stopped()) && taczexpandsResult != null && CompatHelper.INSTANCE.hasTACZTweaks() && taczexpandsResult.getType() != HitResult.Type.MISS) {
+                BlockState blockState = level.getBlockState(taczexpandsResult.getBlockPos());
+                BlockHitResult result = TACZTweaksCompat.INSTANCE.handleHitBlock((EntityKineticBullet)(Object)this, taczexpandsResult, blockState);
+                return result;
             }
-
             return taczexpandsResult;
-
-        }, (rayTraceContext) -> {
+        }, rayTraceContext -> {
             Vec3 vec3 = rayTraceContext.getFrom().subtract(rayTraceContext.getTo());
-            return BlockHitResult.miss(rayTraceContext.getTo(), Direction.getNearest(vec3.x, vec3.y, vec3.z), BlockPos.containing(rayTraceContext.getTo()));
+            return BlockHitResult.miss((Vec3)rayTraceContext.getTo(), (Direction)Direction.getNearest((double)vec3.x, (double)vec3.y, (double)vec3.z), (BlockPos)BlockPos.containing((Position)rayTraceContext.getTo()));
         });
-
+        BulletCollisionPass hits = this.taczexpands$collisionPass;
+        if (hits != null && hitResult.getType() == HitResult.Type.MISS && !hits.stopped()) hits.consumeTo(context.getTo());
+        this.taczexpands$rayEndpoint = hits != null && hits.stopped() ? hits.lastHit() : hitResult.getLocation();
         if (CompatHelper.INSTANCE.hasTACZTweaks()) {
-            TACZTweaksCompat.INSTANCE.updatePosition((EntityKineticBullet) (Object) this, hitResult.getLocation());
+            TACZTweaksCompat.INSTANCE.updatePosition((EntityKineticBullet)(Object)this,
+                hits == null || hits.lastHit() == null ? hitResult.getLocation() : hits.lastHit());
         }
-
         return hitResult;
     }
 
     @Unique
     public boolean taczexpands$tryDeflection(BlockHitResult blockHitResult, BlockResistanceData blockResistanceData) {
-        if (!blockResistanceData.getDeflectable()) return false;
-
-        var bulletData = taczexpands$bulletExtraData.getBulletData();
-        var bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder(bulletData);
-
-        var shouldDeflection = bulletExtraHolder.deflection && taczexpands$deflectionTimes < bulletExtraHolder.maxDeflectionCount;
-        if (!shouldDeflection) return false;
-
-        var bulletDir = getDeltaMovement().normalize();
-        var face = blockHitResult.getDirection();
-        var normal = Vec3.atLowerCornerOf(face.getNormal());
-
-        var dot = bulletDir.dot(normal);
-        var incidenceAngle = Math.toDegrees(Math.acos(Math.abs(dot)));
-
-        var minIncidenceAngle = bulletExtraHolder.minIncidenceAngle;
-        if (incidenceAngle < minIncidenceAngle) {
+        Level level;
+        float minIncidenceAngle;
+        Direction face;
+        Vec3 normal;
+        boolean shouldDeflection;
+        if (!blockResistanceData.getDeflectable()) {
             return false;
         }
-
-        var reflectDir = bulletDir.subtract(normal.scale(2 * dot));
-
-        var event = new BulletDeflectEvent((EntityKineticBullet) (Object) this, blockHitResult);
-        taczexpands$overridePosition = blockHitResult.getLocation();
-        MinecraftForge.EVENT_BUS.post(event);
-        taczexpands$overridePosition = null;
+        BulletData bulletData = this.taczexpands$bulletExtraData.getBulletData();
+        BulletExtraHolder bulletExtraHolder = IAccessorBulletData.getBulletExtraHolder((BulletData)bulletData);
+        boolean bl = shouldDeflection = bulletExtraHolder.deflection && this.taczexpands$deflectionTimes < bulletExtraHolder.maxDeflectionCount;
+        if (!shouldDeflection) {
+            return false;
+        }
+        Vec3 bulletDir = this.getDeltaMovement().normalize();
+        double dot = bulletDir.dot(normal = Vec3.atLowerCornerOf((Vec3i)(face = blockHitResult.getDirection()).getNormal()));
+        double incidenceAngle = Math.toDegrees(Math.acos(Math.abs(dot)));
+        if (incidenceAngle < (double)(minIncidenceAngle = bulletExtraHolder.minIncidenceAngle)) {
+            return false;
+        }
+        Vec3 reflectDir = bulletDir.subtract(normal.scale(2.0 * dot));
+        BulletDeflectEvent event = new BulletDeflectEvent((EntityKineticBullet)(Object)this, blockHitResult);
+        this.taczexpands$overridePosition = blockHitResult.getLocation();
+        MinecraftForge.EVENT_BUS.post((Event)event);
+        this.taczexpands$overridePosition = null;
         if (event.isCanceled()) {
             return false;
         }
-
-        setDeltaMovement(reflectDir.scale(getDeltaMovement().length() * bulletExtraHolder.deflectionSpeedFactor));
-        taczexpands$damageFactor *= bulletExtraHolder.deflectionDamageFactor;
-
-
-        taczexpands$walkedBlocks.add(new BlockPos(blockHitResult.getBlockPos()));
-        taczexpands$deflectionTimes++;
-        taczexpands$deflectionTick = true;
-        if (bulletExtraHolder.renderDeflectionBulletHole) {
-            if (level() instanceof ServerLevel serverLevel) {
-                BulletHoleOption bulletHoleOption = new BulletHoleOption(blockHitResult.getDirection(), new BlockPos(blockHitResult.getBlockPos()), this.ammoId.toString(), this.gunId.toString(), this.gunDisplayId.toString());
-                var hitVec = blockHitResult.getLocation();
-                serverLevel.sendParticles(bulletHoleOption, hitVec.x, hitVec.y, hitVec.z, 1, 0, 0, 0, 0);
-            }
+        this.setDeltaMovement(reflectDir.scale(this.getDeltaMovement().length() * (double)bulletExtraHolder.deflectionSpeedFactor));
+        this.taczexpands$damageFactor *= bulletExtraHolder.deflectionDamageFactor;
+        this.taczexpands$walkedBlocks.add(new BlockPos((Vec3i)blockHitResult.getBlockPos()));
+        ++this.taczexpands$deflectionTimes;
+        this.taczexpands$deflectionTick = true;
+        if (bulletExtraHolder.renderDeflectionBulletHole && (level = this.level()) instanceof ServerLevel) {
+            ServerLevel serverLevel = (ServerLevel)level;
+            BulletHoleOption bulletHoleOption = new BulletHoleOption(blockHitResult.getDirection(), new BlockPos((Vec3i)blockHitResult.getBlockPos()), this.ammoId.toString(), this.gunId.toString(), this.gunDisplayId.toString());
+            Vec3 hitVec = blockHitResult.getLocation();
+            serverLevel.sendParticles((ParticleOptions)bulletHoleOption, hitVec.x, hitVec.y, hitVec.z, 1, 0.0, 0.0, 0.0, 0.0);
         }
         return true;
     }
 
-    @Inject(method = "getDamage", at = @At("RETURN"), cancellable = true)
+    @Inject(method = "getDamage", at = @At(value = "RETURN"), cancellable = true)
     public void hookGetDamage(CallbackInfoReturnable<Float> cir) {
-        cir.setReturnValue(cir.getReturnValue() * taczexpands$damageFactor);
+        cir.setReturnValue(cir.getReturnValue() * this.taczexpands$damageFactor);
     }
 }
+

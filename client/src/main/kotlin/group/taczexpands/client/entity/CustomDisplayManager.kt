@@ -1,5 +1,6 @@
 package group.taczexpands.client.entity
 
+import group.taczexpands.common.TACZExpandsCommon.Companion.LOGGER
 import group.taczexpands.common.entity.CustomDisplayEntity
 import net.minecraft.nbt.Tag
 import net.minecraft.resources.ResourceLocation
@@ -36,7 +37,7 @@ object CustomDisplayManager {
                     return null
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                LOGGER.error("Failed to load custom display model '{}' for entity {}", entity.renderData.getString("modelID"), entity.uuid, e)
             }
         }
 

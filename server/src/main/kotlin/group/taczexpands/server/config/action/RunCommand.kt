@@ -6,6 +6,7 @@ import group.taczexpands.server.config.action.base.ListPrepareData
 import group.taczexpands.server.config.action.base.PrepareData
 import group.taczexpands.server.config.action.base.SelectorPrepareData
 import group.taczexpands.server.config.action.base.toData
+import group.taczexpands.server.config.action.base.performAction
 import group.taczexpands.server.config.create
 import group.taczexpands.server.context.Context
 import group.taczexpands.server.expression.ExpressionData
@@ -67,10 +68,10 @@ data class RunCommand(
         )
         val result = server.commands.performCommand(results, baseCommand)
         if (succeeded != null && result > 0) {
-            succeeded.perform(skill, context)
+            succeeded.performAction(skill, context)
         }
         if (failed != null && result <= 0) {
-            failed.perform(skill, context)
+            failed.performAction(skill, context)
         }
     }
 }

@@ -31,6 +31,8 @@ class Shake(
     private val startTime = System.currentTimeMillis() + delayMillis
     private val endTime = startTime + durationMillis
     private var periodCount: Int = 0
+    private var lastFrameTime = startTime
+    private var phase = 0.0
 
     fun update(frameCurrentTimeMillis: Long): Boolean {
         if (frameCurrentTimeMillis > endTime) {
@@ -44,10 +46,9 @@ class Shake(
         val mc = Minecraft.getInstance()
         val player = mc.player ?: return true
 
-        val elapsedSecondsForSine = (frameCurrentTimeMillis - startTime) / 1000f
-
-
-        val currentPeriodCount = (elapsedSecondsForSine * frequencyHz).toInt()
+        phase += 2 * PI * frequencyHz * (frameCurrentTimeMillis - lastFrameTime) / 1000.0
+        lastFrameTime = frameCurrentTimeMillis
+        val currentPeriodCount = (phase / (2 * PI)).toInt()
 
         if (currentPeriodCount > periodCount) {
             if (dynamicPhaseOffset) {
@@ -58,8 +59,8 @@ class Shake(
         }
 
 
-        val sineX = sin(2 * PI * elapsedSecondsForSine * frequencyHz + phaseOffsetXRot!!).toFloat() * amplitudeXRot
-        val sineY = cos(2 * PI * elapsedSecondsForSine * frequencyHz + phaseOffsetYRot!!).toFloat() * amplitudeYRot
+        val sineX = sin(phase + phaseOffsetXRot!!).toFloat() * amplitudeXRot
+        val sineY = cos(phase + phaseOffsetYRot!!).toFloat() * amplitudeYRot
 
         val randomX = (Random.nextFloat() - 0.5f) * 2f * amplitudeXRot * randomness
         val randomY = (Random.nextFloat() - 0.5f) * 2f * amplitudeYRot * randomness

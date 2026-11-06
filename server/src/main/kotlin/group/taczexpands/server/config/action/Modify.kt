@@ -5,7 +5,7 @@ import com.tacz.guns.resource.pojo.data.gun.InaccuracyType
 import group.taczexpands.common.data.FlightProfileType
 import group.taczexpands.common.nbt.GunExtras
 import group.taczexpands.common.network.s2c.S2CAction
-import group.taczexpands.server.accessor.IAccessorBullet
+import group.taczexpands.server.accessor.IAccessorServerBullet
 import group.taczexpands.server.compat.CompatHelper
 import group.taczexpands.server.compat.superbwarfare.SuperbWarfareCompat
 import group.taczexpands.server.config.SelectorData
@@ -66,7 +66,7 @@ data class Modify(
             try {
                 it.execute(context, data.dataList[index])
             } catch (e: Exception) {
-                LOGGER.error("Modify error ${it.name}. Skipping. ", e)
+                LOGGER.error("Modify parameter '{}' failed in skill '{}' (trigger {})", it.name, skill.config.name, skill.trigger, e)
             }
         }
 
@@ -99,6 +99,7 @@ val PARAMETERS = arrayOf(
     "SneakSpreadModifier",
     "LieSpreadModifier",
     "AimSpreadModifier",
+    "JumpSpreadModifier",
 
     "ReloadTimeModifier",
     "AimTimeModifier",
@@ -382,6 +383,17 @@ data class Parameter(
                     (target as? ServerPlayer)?.inventoryMenu?.broadcastChanges()
                 }
 
+                "JumpSpreadModifier" -> {
+                    val newModifier = getNumberValue(context, target, data).toFloat()
+
+                    val gunItem = ModItems.MODERN_KINETIC_GUN.get()
+                    target as? LivingEntity ?: return@forEach
+                    val mainHand = target.mainHandItem
+                    if (mainHand.item == gunItem)
+                        GunExtras.setJumpSpreadModifier(mainHand, newModifier)
+                    (target as? ServerPlayer)?.inventoryMenu?.broadcastChanges()
+                }
+
                 "ReloadTimeModifier" -> {
                     val newModifier = getNumberValue(context, target, data).toFloat()
 
@@ -559,7 +571,7 @@ data class Parameter(
                 "BulletFlightProfileType" -> {
                     val newValue = getNumberValue(context, target, data).toInt()
                     val newProfile = FlightProfileType.entries.getOrNull(newValue) ?: return@forEach
-                    val extraData = (context.bullet as? IAccessorBullet)?.`taczexpands$getBulletExtraData`() ?: return@forEach
+                    val extraData = (context.bullet as? IAccessorServerBullet)?.`taczexpands$getBulletExtraData`() ?: return@forEach
                     extraData.flightProfileType = newProfile
                 }
 

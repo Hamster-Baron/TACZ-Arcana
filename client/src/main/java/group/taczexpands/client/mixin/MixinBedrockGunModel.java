@@ -1,6 +1,9 @@
 package group.taczexpands.client.mixin;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import net.minecraft.client.renderer.MultiBufferSource;
 import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.tacz.guns.api.TimelessAPI;
@@ -77,19 +80,17 @@ public abstract class MixinBedrockGunModel extends BedrockAnimatedModel implemen
         return taczexpands$hookPath;
     }
 
-    @Redirect(method = "render", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/client/model/functional/BeamRenderer;renderLaserBeam(Lnet/minecraft/world/item/ItemStack;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemDisplayContext;Ljava/util/List;)V"))
-    public void redirectRenderLaserBeam(ItemStack item, PoseStack poseStack, ItemDisplayContext context, List<BedrockPart> path) {
+    @WrapOperation(method = "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemDisplayContext;Lnet/minecraft/client/renderer/RenderType;IIFFFFLnet/minecraft/client/renderer/MultiBufferSource;)V", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/client/model/functional/BeamRenderer;renderLaserBeam(Lnet/minecraft/world/item/ItemStack;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemDisplayContext;Ljava/util/List;Lnet/minecraft/client/renderer/MultiBufferSource;)V"))
+    private void taczexpands$renderLaserBeam(ItemStack item, PoseStack poseStack, ItemDisplayContext context, List<BedrockPart> path, MultiBufferSource bufferSource, Operation<Void> original) {
         if (ClientConfig.INSTANCE.getEnableAdvancedBeamRendering().get()) {
-            BeamRendererOverride.renderLaserBeam(item, item, poseStack, context, path);
+            BeamRendererOverride.renderLaserBeam(item, item, poseStack, context, path, bufferSource);
         } else {
-            BeamRenderer.renderLaserBeam(item, poseStack, context, path);
+            original.call(item, poseStack, context, path, bufferSource);
         }
     }
 
-    @Redirect(method = "render", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;clear(IZ)V"))
-    public void redirectClear(int p_69422_, boolean p_69423_) {
-        if (p_69422_ != GL11.GL_STENCIL_BUFFER_BIT) RenderSystem.clear(p_69422_, p_69423_);
+    @WrapOperation(method = "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemDisplayContext;Lnet/minecraft/client/renderer/RenderType;IIFFFFLnet/minecraft/client/renderer/MultiBufferSource;)V", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;clear(IZ)V"))
+    private void taczexpands$clear(int mask, boolean checkError, Operation<Void> original) {
+        if (mask != GL11.GL_STENCIL_BUFFER_BIT) original.call(mask, checkError);
     }
-
-
 }

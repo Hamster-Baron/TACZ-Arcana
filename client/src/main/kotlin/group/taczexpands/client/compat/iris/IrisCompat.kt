@@ -4,7 +4,6 @@ import group.taczexpands.client.accessor.IAccessorIrisApiV0Impl
 import net.irisshaders.iris.api.v0.IrisApi
 import net.irisshaders.iris.apiimpl.IrisApiV0Impl
 import net.irisshaders.iris.pathways.HandRenderer
-import net.irisshaders.iris.uniforms.CapturedRenderingState
 import net.irisshaders.iris.vertices.ImmediateState
 
 object IrisCompat {
@@ -16,41 +15,23 @@ object IrisCompat {
         return HandRenderer.INSTANCE.isActive
     }
 
-    fun setHookUsingShaderPack() {
-        (IrisApiV0Impl.INSTANCE as IAccessorIrisApiV0Impl).`taczexpands$setHookUsingShaderPack`()
+    fun setHookUsingShaderPack(): Boolean {
+        return (IrisApiV0Impl.INSTANCE as IAccessorIrisApiV0Impl).`taczexpands$setHookUsingShaderPack`(true)
     }
 
-    fun unSetHookUsingShaderPack() {
-        (IrisApiV0Impl.INSTANCE as IAccessorIrisApiV0Impl).`taczexpands$unSetHookUsingShaderPack`()
+    fun restoreHookUsingShaderPack(previous: Boolean) {
+        (IrisApiV0Impl.INSTANCE as IAccessorIrisApiV0Impl).`taczexpands$setHookUsingShaderPack`(previous)
     }
 
-    var prevState: Boolean? = null
-
-    fun saveAndDisableExtendedVertexFormat() {
-        prevState = ImmediateState.renderWithExtendedVertexFormat
+    /** The caller owns this saved value, including when thermal rendering nests inside its pass. */
+    fun beginLightweightLayout(): Boolean {
+        val previous = ImmediateState.renderWithExtendedVertexFormat
         ImmediateState.renderWithExtendedVertexFormat = false
+        return previous
     }
 
-    fun restoreExtendedVertexFormat() {
-        if (prevState != null) {
-            ImmediateState.renderWithExtendedVertexFormat = prevState!!
-        }
-        prevState = null
+    fun endLightweightLayout(previous: Boolean) {
+        ImmediateState.renderWithExtendedVertexFormat = previous
     }
-
-    var prevEntity: Int? = null
-
-    fun saveAndSetCurrentEntity(value: Int) {
-        prevEntity = CapturedRenderingState.INSTANCE.currentRenderedEntity
-        CapturedRenderingState.INSTANCE.setCurrentEntity(value)
-    }
-
-    fun restoreCurrentEntity() {
-        if (prevEntity != null) {
-            CapturedRenderingState.INSTANCE.setCurrentEntity(prevEntity!!)
-        }
-        prevEntity = null
-    }
-
 
 }

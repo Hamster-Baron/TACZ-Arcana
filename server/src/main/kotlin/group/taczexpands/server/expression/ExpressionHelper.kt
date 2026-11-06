@@ -19,6 +19,8 @@ import group.taczexpands.server.nbt.DataStorage
 import group.taczexpands.server.nbt.DataType
 import group.taczexpands.server.skill.PackValuesManager
 import group.taczexpands.server.skill.SignalManager
+import group.taczexpands.server.util.CameraTraceEvaluation
+import group.taczexpands.server.util.CameraTraceEvaluationScope
 import group.taczexpands.server.util.infer
 import net.minecraft.commands.arguments.NbtPathArgument
 import net.minecraft.nbt.CompoundTag
@@ -91,87 +93,91 @@ object ExpressionHelper {
         newSelf: Entity? = null,
         processDelegate: ((Expression) -> Expression)? = null
     ): Expression {
-        val innerExpression = Expression(expressionStr, expressionConfig)
-        val expression = processDelegate?.invoke(innerExpression) ?: innerExpression
-        expression.with("__BUILTIN_CONTEXT__", context)
-        expression.with("__BUILTIN_TARGET__", target)
-        expression.with("__BUILTIN_NEW_SELF__", newSelf)
-        val scoreboard = ServerLifecycleHooks.getCurrentServer().scoreboard
-        expression.undefinedVariables.forEach { variable ->
-            if (variable.startsWith("Val_")) {
-                val valueName = variable.removePrefix("Val_")
+        val inheritedCameraTraceEvaluationScope = context.cameraTraceEvaluationScope
+        val cameraTraceEvaluationScope = inheritedCameraTraceEvaluationScope ?: CameraTraceEvaluationScope()
+        val innerExpression = CameraScopedExpression(expressionStr, expressionConfig, context, cameraTraceEvaluationScope, inheritedCameraTraceEvaluationScope == null)
+        return CameraTraceEvaluation.withScope(context, cameraTraceEvaluationScope) {
+            val expression = processDelegate?.invoke(innerExpression) ?: innerExpression
+            expression.with("__BUILTIN_CONTEXT__", context)
+            expression.with("__BUILTIN_TARGET__", target)
+            expression.with("__BUILTIN_NEW_SELF__", newSelf)
+            val scoreboard = ServerLifecycleHooks.getCurrentServer().scoreboard
+            expression.undefinedVariables.forEach { variable ->
+                if (variable.startsWith("Val_")) {
+                    val valueName = variable.removePrefix("Val_")
 
-                val packValue = PackValuesManager.getValue(valueName)
-                if (packValue != null) {
-                    expression.with(variable, packValue)
+                    val packValue = PackValuesManager.getValue(valueName)
+                    if (packValue != null) {
+                        expression.with(variable, packValue)
+                        return@forEach
+                    }
+
+
+                    if (!GLOBAL_VALUES.values.containsKey(valueName)) {
+                        return@forEach
+                    }
+
+                    val scalar = GLOBAL_VALUES.values[valueName]!!
+
+                    expression.with(variable, scalar.infer())
                     return@forEach
                 }
 
-
-                if (!GLOBAL_VALUES.values.containsKey(valueName)) {
-                    return@forEach
-                }
-
-                val scalar = GLOBAL_VALUES.values[valueName]!!
-
-                expression.with(variable, scalar.infer())
-                return@forEach
-            }
-
-            if (variable.startsWith("VarFloat_")) {
-                val entity = target ?: context.self
-                val objectiveName = variable.removePrefix("VarFloat_")
-                val scoreData = DataStorage.get().getOrCreateScore(DataType.FLOAT, objectiveName)
-                val value = scoreData.getValue(entity)
-                expression.with(variable, value)
-            } else if (variable.startsWith("VarString_")) {
-                val entity = target ?: context.self
-                val objectiveName = variable.removePrefix("VarString_")
-                val scoreData = DataStorage.get().getOrCreateScore(DataType.STRING, objectiveName)
-                val value = scoreData.getValue(entity)
-                expression.with(variable, value)
-            } else if (variable.startsWith("Var_")) {
-                val entity = target ?: context.self
-                val objectiveName = "tacz_${variable.removePrefix("Var_")}"
-                if (!scoreboard.hasObjective(objectiveName)) {
-                    scoreboard.addObjective(objectiveName, ObjectiveCriteria.DUMMY, Component.literal(objectiveName), ObjectiveCriteria.DUMMY.defaultRenderType)
-                }
-                val objective = scoreboard.getOrCreateObjective(objectiveName)
-                val score = scoreboard.getOrCreatePlayerScore(entity.scoreboardName, objective).score
-                expression.with(variable, score)
-            } else {
-                val result = if (variable.startsWith("PAPI_")) {
-                    val player = target as? Player
-                    if (player != null && BukkitHelper.hasBukkit && PlaceholderAPIHelper.hasPlaceholderAPI) {
-                        PlaceholderAPIForge.setPlaceholders(player, variable.removePrefix("PAPI_"))
-                    } else variable
-                } else if (variable.startsWith("VarPAPI_")) {
-                    val player = target as? Player
-                    if (player != null && BukkitHelper.hasBukkit && PlaceholderAPIHelper.hasPlaceholderAPI) {
-                        PlaceholderAPIForge.setPlaceholders(player, variable.removePrefix("VarPAPI_"))
-                    } else variable
-                } else if (variable.startsWith("Self")) {
-                    val self = newSelf ?: context.self
-                    Variables.getBuiltinVariable<Any?>(variable.removePrefix("Self"))?.get(context, self)
-                } else if (variable.startsWith("Target")) {
-                    val newTarget = context.target
-                    Variables.getBuiltinVariable<Any?>(variable.removePrefix("Target"))?.get(context, newTarget)
-                } else if (variable.startsWith("VarSelf")) {
-                    val self = newSelf ?: context.self
-                    Variables.getBuiltinVariable<Any?>(variable.removePrefix("VarSelf"))?.get(context, self)
-                } else if (variable.startsWith("VarTarget")) {
-                    val newTarget = context.target
-                    Variables.getBuiltinVariable<Any?>(variable.removePrefix("VarTarget"))?.get(context, newTarget)
-                } else if (variable.startsWith("Var")) {
-                    Variables.getBuiltinVariable<Any?>(variable.removePrefix("Var"))?.get(context, target)
+                if (variable.startsWith("VarFloat_")) {
+                    val entity = target ?: context.self
+                    val objectiveName = variable.removePrefix("VarFloat_")
+                    val scoreData = DataStorage.get().getOrCreateScore(DataType.FLOAT, objectiveName)
+                    val value = scoreData.getValue(entity)
+                    expression.with(variable, value)
+                } else if (variable.startsWith("VarString_")) {
+                    val entity = target ?: context.self
+                    val objectiveName = variable.removePrefix("VarString_")
+                    val scoreData = DataStorage.get().getOrCreateScore(DataType.STRING, objectiveName)
+                    val value = scoreData.getValue(entity)
+                    expression.with(variable, value)
+                } else if (variable.startsWith("Var_")) {
+                    val entity = target ?: context.self
+                    val objectiveName = "tacz_${variable.removePrefix("Var_")}"
+                    if (!scoreboard.hasObjective(objectiveName)) {
+                        scoreboard.addObjective(objectiveName, ObjectiveCriteria.DUMMY, Component.literal(objectiveName), ObjectiveCriteria.DUMMY.defaultRenderType)
+                    }
+                    val objective = scoreboard.getOrCreateObjective(objectiveName)
+                    val score = scoreboard.getOrCreatePlayerScore(entity.scoreboardName, objective).score
+                    expression.with(variable, score)
                 } else {
-                    Variables.getBuiltinVariable<Any?>(variable)?.get(context, target)
-                }
+                    val result = if (variable.startsWith("PAPI_")) {
+                        val player = target as? Player
+                        if (player != null && BukkitHelper.hasBukkit && PlaceholderAPIHelper.hasPlaceholderAPI) {
+                            PlaceholderAPIForge.setPlaceholders(player, variable.removePrefix("PAPI_"))
+                        } else variable
+                    } else if (variable.startsWith("VarPAPI_")) {
+                        val player = target as? Player
+                        if (player != null && BukkitHelper.hasBukkit && PlaceholderAPIHelper.hasPlaceholderAPI) {
+                            PlaceholderAPIForge.setPlaceholders(player, variable.removePrefix("VarPAPI_"))
+                        } else variable
+                    } else if (variable.startsWith("Self")) {
+                        val self = newSelf ?: context.self
+                        Variables.getBuiltinVariable<Any?>(variable.removePrefix("Self"))?.get(context, self)
+                    } else if (variable.startsWith("Target")) {
+                        val newTarget = context.target
+                        Variables.getBuiltinVariable<Any?>(variable.removePrefix("Target"))?.get(context, newTarget)
+                    } else if (variable.startsWith("VarSelf")) {
+                        val self = newSelf ?: context.self
+                        Variables.getBuiltinVariable<Any?>(variable.removePrefix("VarSelf"))?.get(context, self)
+                    } else if (variable.startsWith("VarTarget")) {
+                        val newTarget = context.target
+                        Variables.getBuiltinVariable<Any?>(variable.removePrefix("VarTarget"))?.get(context, newTarget)
+                    } else if (variable.startsWith("Var")) {
+                        Variables.getBuiltinVariable<Any?>(variable.removePrefix("Var"))?.get(context, target)
+                    } else {
+                        Variables.getBuiltinVariable<Any?>(variable)?.get(context, target)
+                    }
 
-                expression.with(variable, result)
+                    expression.with(variable, result)
+                }
             }
+            expression
         }
-        return expression
     }
 }
 
@@ -344,5 +350,21 @@ object GetSelfNBTFunction : AbstractFunction() {
         if (sources.size > 1) throw IllegalStateException("NBT result has more than one")
 
         return expression.convertValue(sources[0].unwrap())
+    }
+}
+
+private class CameraScopedExpression(
+    expressionString: String,
+    configuration: ExpressionConfiguration,
+    private val context: Context,
+    private val cameraTraceEvaluationScope: CameraTraceEvaluationScope,
+    private val ownsCameraTraceEvaluationScope: Boolean
+) : Expression(expressionString, configuration) {
+    override fun evaluate(): EvaluationValue = CameraTraceEvaluation.withScope(context, cameraTraceEvaluationScope) {
+        try {
+            super.evaluate()
+        } finally {
+            if (ownsCameraTraceEvaluationScope) cameraTraceEvaluationScope.invalidate()
+        }
     }
 }

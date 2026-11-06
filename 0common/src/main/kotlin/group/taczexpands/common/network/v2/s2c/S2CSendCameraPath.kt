@@ -3,10 +3,11 @@ package group.taczexpands.common.network.v2.s2c
 import group.taczexpands.common.data.CameraPath
 import group.taczexpands.common.network.s2c.S2CRaw
 import group.taczexpands.common.util.JSON
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class S2CSendCameraPath(val allowMove: Boolean, val allowRotate: Boolean, val cameraPathList: List<CameraPath> = listOf()) {
+data class S2CSendCameraPath(val allowMove: Boolean, val allowRotate: Boolean, val cameraPathList: List<CameraPath> = listOf(), @SerialName("session_id") val sessionId: Long = 0) {
     companion object {
         const val NETWORK_INDEX = 1
     }

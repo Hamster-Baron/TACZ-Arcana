@@ -28,3 +28,5 @@ META-INF/natives/
 
 client/lib/*.jar
 server/lib/*.jar
+
+/dist/

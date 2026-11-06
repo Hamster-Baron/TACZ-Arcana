@@ -3,6 +3,7 @@ package group.taczexpands.server.skill
 import com.google.common.collect.Maps
 import com.google.gson.reflect.TypeToken
 import com.tacz.guns.resource.CommonAssetsManager
+import group.taczexpands.common.TACZExpandsCommon.Companion.LOGGER
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.Resource
 import net.minecraft.server.packs.resources.ResourceManager
@@ -17,19 +18,18 @@ object PackSkillsManager : SimplePreparableReloadListener<Map<String, Map<Resour
         val output: MutableMap<String, Map<ResourceLocation, List<String>>> = Maps.newHashMap()
 
         for (namespaces in manager.getNamespaces()) {
-            manager.getResource(ResourceLocation(namespaces, PACK_SKILLS_NAME)).ifPresent { rl: Resource ->
-                try {
+            try {
+                manager.getResource(ResourceLocation(namespaces, PACK_SKILLS_NAME)).ifPresent { rl: Resource ->
                     rl.openAsReader().use { reader ->
                         val packSkills = GsonHelper.fromJson(
                             CommonAssetsManager.GSON, reader,
                             object : TypeToken<Map<ResourceLocation, List<String>>>(){}
                         )
-                        val packSkills1 = output.put(namespaces, packSkills)
-                        check(packSkills1 == null) { "Duplicate data file ignored with namespace $namespaces" }
+                        output[namespaces] = packSkills
                     }
-                } catch (e: Exception) {
                 }
-
+            } catch (e: Exception) {
+                LOGGER.error("Failed to load '{}' in namespace '{}'", PACK_SKILLS_NAME, namespaces, e)
             }
         }
         return output

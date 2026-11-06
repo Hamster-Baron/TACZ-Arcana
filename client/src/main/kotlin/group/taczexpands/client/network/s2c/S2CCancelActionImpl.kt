@@ -3,6 +3,7 @@ package group.taczexpands.client.network.s2c
 import com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator
 import com.tacz.guns.client.gameplay.LocalPlayerReload
 import group.taczexpands.client.input.KeyInputs
+import group.taczexpands.common.TACZExpandsCommon.Companion.LOGGER
 import group.taczexpands.common.network.s2c.S2CCancelAction
 import net.minecraft.client.Minecraft
 import net.minecraftforge.network.NetworkEvent
@@ -50,7 +51,8 @@ object S2CCancelActionImpl {
                                     it.isAccessible = true
                                     (it.get(player) as LocalPlayerReload).cancelReload()
                                 }
-                            } catch (e: Exception) {
+                            } catch (e: ReflectiveOperationException) {
+                                LOGGER.error("Failed to access TacZ field 'tac\$reload' for cancel action", e)
                             }
                         }
 

@@ -10,6 +10,7 @@ import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector4f
+import java.util.UUID
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -132,11 +133,11 @@ fun FriendlyByteBuf.readOptionalUtf(maxLength: Int = 32767): String? {
     return if (this.readBoolean()) this.readUtf(maxLength) else null
 }
 
-fun FriendlyByteBuf.writeOptionalUUID(value: java.util.UUID?) {
+fun FriendlyByteBuf.writeOptionalUUID(value: UUID?) {
     this.writeBoolean(value != null)
     if (value != null) this.writeUUID(value)
 }
 
-fun FriendlyByteBuf.readOptionalUUID(): java.util.UUID? {
+fun FriendlyByteBuf.readOptionalUUID(): UUID? {
     return if (this.readBoolean()) this.readUUID() else null
 }

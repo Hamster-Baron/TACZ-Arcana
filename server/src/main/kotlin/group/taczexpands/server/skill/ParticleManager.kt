@@ -1,6 +1,9 @@
 package group.taczexpands.server.skill
 
 import com.mojang.brigadier.StringReader
+import group.taczexpands.common.network.v2.s2c.S2CParticleEffect
+import group.taczexpands.server.network.NetworkManager
+import group.taczexpands.server.util.LOGGER
 import kotlinx.serialization.Serializable
 import net.minecraft.core.BlockPos
 import net.minecraft.core.particles.ParticleOptions
@@ -8,6 +11,7 @@ import net.minecraft.core.particles.ParticleType
 import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.Vec3
@@ -15,13 +19,30 @@ import net.minecraftforge.registries.ForgeRegistries
 
 object ParticleEmitterManager {
     private val emitters = mutableListOf<Emitter>()
+    private val named = mutableMapOf<Pair<String, Entity>, Emitter>()
 
-    fun addEmitter(emitter: Emitter) {
+    fun addEmitter(emitter: Emitter, identifier: String? = null, owner: Entity? = null) {
+        if (identifier != null && owner != null) {
+            removeNamed(identifier, owner)
+            named[identifier to owner] = emitter
+        }
         emitters.add(emitter)
+    }
+
+    fun removeNamed(identifier: String, owner: Entity) {
+        named.remove(identifier to owner)?.let { emitters.remove(it) }
+    }
+
+    fun sendEffect(effect: S2CParticleEffect, level: ServerLevel, location: Vec3?) {
+        val packet = effect.create()
+        level.players().forEach { player ->
+            if (location == null || player.distanceToSqr(location) <= 256 * 256) NetworkManager.sendToPlayer(packet, player)
+        }
     }
 
     fun onServerTick() {
         emitters.removeIf { it.update() }
+        named.entries.removeIf { it.value.duration < 0 }
     }
 
     fun blockedByParticle(level: Level, left: Vec3, right: Vec3): Boolean {
@@ -48,13 +69,15 @@ class Emitter(
     val gravityValue: Float = 0.0f
 ) {
     private var tickCount = 0
+    private val totalDuration = duration
 
     @Serializable
     enum class Mode {
         SIGNAL,
         SMOKE,
         BALL,
-        RING
+        RING,
+        SNOWSTORM
     }
 
     fun update(): Boolean {
@@ -62,18 +85,22 @@ class Emitter(
             if (duration-- <= 0) return true
             tickCount++
 
-            val progress = when {
-                tickCount < startDelay -> 0.0
-                tickCount >= duration -> 1.0
-                else -> (tickCount - startDelay).toDouble() / (duration - startDelay)
-            }
-            val particles = generateParticles(progress)
+            if (mode == Mode.SNOWSTORM) return false
+            val particles = generateParticles(progress())
 
             spawnParticles(particles)
+            return false
         } catch (e: Exception) {
-            e.printStackTrace()
+            LOGGER.error("Failed to update particle emitter '{}'; removing emitter", type, e)
+            duration = -1
+            return true
         }
-        return false
+    }
+
+    private fun progress(): Double = when {
+        tickCount < startDelay -> 0.0
+        2L * tickCount >= totalDuration -> 1.0
+        else -> (tickCount - startDelay).toDouble() / (totalDuration - tickCount - startDelay)
     }
 
     fun <T : ParticleOptions> getType(type: String): ParticleType<T>? {
@@ -104,6 +131,7 @@ class Emitter(
         val currentRadius = radius * progress
 
         when (mode) {
+            Mode.SNOWSTORM -> return emptyList()
             Mode.SIGNAL -> {
                 val maxHeight = this.radius
 
@@ -201,12 +229,7 @@ class Emitter(
 
 
     fun isInsideSmoke(startPos: Vec3, endPos: Vec3): Boolean {
-        val currentDuration = duration + tickCount
-        val progress = when {
-            tickCount < startDelay -> 0.0
-            currentDuration <= 0 -> 1.0
-            else -> (tickCount - startDelay).toDouble() / (currentDuration - startDelay)
-        }
+        val progress = progress()
         val currentRadius = radius * progress
 
         val emitterCenterY: Double

@@ -3,12 +3,13 @@ package group.taczexpands.server.util
 import group.taczexpands.server.config.action.*
 import group.taczexpands.server.config.condition.*
 import group.taczexpands.server.skill.TriggerType
+import group.taczexpands.server.expression.Variables as BuiltinVariables
 import java.io.File
 
 object Debug {
     fun dump() {
         val allTriggers = TriggerType.entries
-        val allBuiltinVariables = group.taczexpands.server.expression.Variables.builtinVars.values
+        val allBuiltinVariables = BuiltinVariables.builtinVars.values
         val allModifiableVariables = PARAMETERS
         File("allTriggers.txt").writeText(allTriggers.joinToString(System.lineSeparator()) { "${it.name}(${it.reversible})" })
         File("allBuiltinVariables.txt").writeText(allBuiltinVariables.filter { it.name != null }.joinToString(System.lineSeparator()) { "${it.name!!}" })
@@ -79,6 +80,7 @@ object Debug {
         SetAttachment.EXAMPLE,
         SetTexture.EXAMPLE,
         SetCamera.EXAMPLE,
+        SetSurfaceCamera.EXAMPLE,
         NBTEdit.EXAMPLE,
         NBTEdit.EXAMPLE2,
         NBTEdit.EXAMPLE3,

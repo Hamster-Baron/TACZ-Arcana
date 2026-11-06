@@ -9,6 +9,8 @@ import com.tacz.guns.network.NetworkHandler
 import com.tacz.guns.network.message.ServerMessageRefreshRefitScreen
 import com.tacz.guns.resource.modifier.AttachmentPropertyManager
 import com.tacz.guns.resource.pojo.data.gun.Bolt
+import com.tacz.guns.resource.pojo.data.gun.GunData
+import com.tacz.guns.util.VirtualOemAttachment
 import group.taczexpands.common.accessor.IAccessorAttachmentData
 import group.taczexpands.common.accessor.IAccessorGunData
 import group.taczexpands.common.data.UnderBarrel
@@ -26,6 +28,7 @@ import group.taczexpands.server.context.Context
 import group.taczexpands.server.network.NetworkManager.sendToPlayer
 import group.taczexpands.server.skill.SkillManager
 import group.taczexpands.server.skill.TriggerType
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.item.ItemStack
@@ -59,16 +62,7 @@ object GunManager {
         val prevIsBaseAmmo = prevBaseAmmo != null && prevAmmoId != null && prevBaseAmmo.ammoId == prevAmmoId
 
         if (attachmentType == AttachmentType.EXTENDED_MAG) {
-            iGun.dropAllAmmo(player, gunItem)
-            if(gunData != null) {
-                if (iGun.hasBulletInBarrel(gunItem)) {
-                    iGun.setBulletInBarrel(gunItem, false)
-                    if (gunData.getBolt() != Bolt.OPEN_BOLT && !player.isCreative()) {
-                        val ammoItem = AmmoItemBuilder.create().setId(prevAmmoId).setCount(1).build()
-                        ItemHandlerHelper.giveItemToPlayer(player, ammoItem)
-                    }
-                }
-            }
+            unloadAmmoForAttachmentChange(iGun, gunItem, player, gunData, prevAmmoId)
         }
 
         iGun.installAttachment(gunItem, attachmentItem)
@@ -76,7 +70,7 @@ object GunManager {
 
         val currentAmmoId = gunData?.let { IAccessorGunData.getCurrentAmmoId(it, gunItem) }
         val currentBaseAmmo = gunData?.let { IAccessorGunData.getCurrentBaseAmmo(it, gunItem) }
-        val currentIsBaseAmmo = currentBaseAmmo != null && currentAmmoId != null && currentBaseAmmo.ammoId == prevAmmoId
+        val currentIsBaseAmmo = currentBaseAmmo != null && currentAmmoId != null && currentBaseAmmo.ammoId == currentAmmoId
 
         if (prevAmmoId != null && !IAccessorGunData.isValidAmmoId(gunData, gunItem, prevAmmoId)
             || prevIsBaseAmmo && prevBaseAmmo!!.isTriggerBaseAmmoReloadEvent
@@ -85,14 +79,7 @@ object GunManager {
             iGun.installAttachment(gunItem, oldAttachmentItem)
             AttachmentPropertyManager.postChangeEvent(player, gunItem)
 
-            iGun.dropAllAmmo(player, gunItem)
-            if (iGun.hasBulletInBarrel(gunItem)) {
-                iGun.setBulletInBarrel(gunItem, false)
-                if (gunData.getBolt() != Bolt.OPEN_BOLT && !player.isCreative()) {
-                    val ammoItem = AmmoItemBuilder.create().setId(prevAmmoId).setCount(1).build()
-                    ItemHandlerHelper.giveItemToPlayer(player, ammoItem)
-                }
-            }
+            unloadAmmoForAttachmentChange(iGun, gunItem, player, gunData, prevAmmoId)
 
             iGun.installAttachment(gunItem, attachmentItem)
             AttachmentPropertyManager.postChangeEvent(player, gunItem)
@@ -101,13 +88,12 @@ object GunManager {
             SkillManager.trigger(TriggerType.ON_SWITCH_AMMO, Context(player))
         }
 
-        if (!AttachmentExtras.getIsGenerated(oldAttachmentItem)) {
-            if (attachmentSlotIndex != null) {
-                inventory.setItem(attachmentSlotIndex, oldAttachmentItem)
-            } else {
-                if (!inventory.add(oldAttachmentItem)) {
-                    player.drop(oldAttachmentItem, true)
-                }
+        val shouldReturnOldAttachment = !isEphemeralAttachment(oldAttachmentItem)
+        if (attachmentSlotIndex != null) {
+            inventory.setItem(attachmentSlotIndex, if (shouldReturnOldAttachment) oldAttachmentItem else ItemStack.EMPTY)
+        } else if (shouldReturnOldAttachment) {
+            if (!inventory.add(oldAttachmentItem)) {
+                player.drop(oldAttachmentItem, true)
             }
         }
 
@@ -165,16 +151,7 @@ object GunManager {
         val prevIsBaseAmmo = prevBaseAmmo != null && prevAmmoId != null && prevBaseAmmo.ammoId == prevAmmoId
 
         if (attachmentType == AttachmentType.EXTENDED_MAG) {
-            iGun.dropAllAmmo(player, gunItem)
-            if (gunData != null) {
-                if (iGun.hasBulletInBarrel(gunItem)) {
-                    iGun.setBulletInBarrel(gunItem, false)
-                    if (gunData.getBolt() != Bolt.OPEN_BOLT && !player.isCreative()) {
-                        val ammoItem = AmmoItemBuilder.create().setId(prevAmmoId).setCount(1).build()
-                        ItemHandlerHelper.giveItemToPlayer(player, ammoItem)
-                    }
-                }
-            }
+            unloadAmmoForAttachmentChange(iGun, gunItem, player, gunData, prevAmmoId)
         }
 
         iGun.unloadAttachment(gunItem, attachmentType)
@@ -186,14 +163,7 @@ object GunManager {
             iGun.installAttachment(gunItem, attachmentItem)
             AttachmentPropertyManager.postChangeEvent(player, gunItem)
 
-            iGun.dropAllAmmo(player, gunItem)
-            if (iGun.hasBulletInBarrel(gunItem)) {
-                iGun.setBulletInBarrel(gunItem, false)
-                if (gunData.getBolt() != Bolt.OPEN_BOLT && !player.isCreative()) {
-                    val ammoItem = AmmoItemBuilder.create().setId(prevAmmoId).setCount(1).build()
-                    ItemHandlerHelper.giveItemToPlayer(player, ammoItem)
-                }
-            }
+            unloadAmmoForAttachmentChange(iGun, gunItem, player, gunData, prevAmmoId)
 
             iGun.unloadAttachment(gunItem, attachmentType)
             AttachmentPropertyManager.postChangeEvent(player, gunItem)
@@ -203,7 +173,7 @@ object GunManager {
 
         }
 
-        if (!AttachmentExtras.getIsGenerated(attachmentItem)) {
+        if (!isEphemeralAttachment(attachmentItem)) {
             if (!inventory.add(attachmentItem)) {
                 player.drop(attachmentItem, true)
             }
@@ -230,6 +200,21 @@ object GunManager {
         SkillManager.trigger(TriggerType.ON_CHANGE_ATTACHMENT, AttachmentChangeContext(player, prevId, null), -1)
 
         return true
+    }
+
+    private fun isEphemeralAttachment(attachmentItem: ItemStack): Boolean {
+        return AttachmentExtras.getIsGenerated(attachmentItem) || VirtualOemAttachment.isMarked(attachmentItem)
+    }
+
+    private fun unloadAmmoForAttachmentChange(iGun: IGun, gunItem: ItemStack, player: ServerPlayer, gunData: GunData?, ammoId: ResourceLocation?) {
+        iGun.dropAllAmmo(player, gunItem)
+        iGun.setCurrentAmmoCount(gunItem, 0)
+        if (!iGun.hasBulletInBarrel(gunItem)) return
+        iGun.setBulletInBarrel(gunItem, false)
+        if (gunData != null && ammoId != null && gunData.bolt != Bolt.OPEN_BOLT && !player.isCreative) {
+            val ammoItem = AmmoItemBuilder.create().setId(ammoId).setCount(1).build()
+            ItemHandlerHelper.giveItemToPlayer(player, ammoItem)
+        }
     }
 
     private fun getAttachmentUnderBarrel(attachmentItem: ItemStack): UnderBarrel? {

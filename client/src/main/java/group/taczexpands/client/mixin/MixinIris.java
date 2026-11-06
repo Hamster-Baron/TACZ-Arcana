@@ -1,6 +1,7 @@
 package group.taczexpands.client.mixin;
 
 import group.taczexpands.client.render.Depth;
+import group.taczexpands.client.compat.iris.FlashlightShaderState;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.pipeline.PipelineManager;
 import net.irisshaders.iris.pipeline.VanillaRenderingPipeline;
@@ -15,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(value = Iris.class, remap = false)
 public class MixinIris {
     @Unique
-    private static PipelineManager taczexpands$vanillaRenderingPipeline = new PipelineManager((id) -> new VanillaRenderingPipeline());
+    private static PipelineManager taczexpands$vanillaRenderingPipeline = new PipelineManager((id) -> FlashlightShaderState.createVanilla());
 
     @Inject(method = "getPipelineManager", at = @At("HEAD"), cancellable = true)
     private static void hookGetPipelineManager(CallbackInfoReturnable<PipelineManager> cir) {

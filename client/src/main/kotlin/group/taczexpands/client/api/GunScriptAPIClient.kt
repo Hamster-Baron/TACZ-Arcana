@@ -13,6 +13,11 @@ object GunScriptAPIClient {
 
         GunScriptAPICommon.refreshVariableDelegate = ::refreshVariable
         GunScriptAPICommon.refreshAllVariableDelegate = ::refreshAllVariable
+        GunScriptAPICommon.windowWidthClientDelegate = ::getWindowWidth
+        GunScriptAPICommon.windowHeightClientDelegate = ::getWindowHeight
+        GunScriptAPICommon.guiScaledWidthClientDelegate = ::getGuiScaledWidth
+        GunScriptAPICommon.guiScaledHeightClientDelegate = ::getGuiScaledHeight
+        GunScriptAPICommon.guiScaleClientDelegate = ::getGuiScale
     }
 
     fun getInt(entity: LivingEntity, scoreName: String): Int {
@@ -47,4 +52,14 @@ object GunScriptAPIClient {
             VariableManager.invalidateAll()
         }
     }
+
+    fun getWindowWidth(): Int = Minecraft.getInstance().window.width
+
+    fun getWindowHeight(): Int = Minecraft.getInstance().window.height
+
+    fun getGuiScaledWidth(): Int = Minecraft.getInstance().window.guiScaledWidth
+
+    fun getGuiScaledHeight(): Int = Minecraft.getInstance().window.guiScaledHeight
+
+    fun getGuiScale(): Double = Minecraft.getInstance().window.guiScale
 }

@@ -229,6 +229,21 @@ object GunExtras {
         tag.set(GunKeys.RPM_MODIFIER, value)
     }
 
+    fun getAimShakeXModifier(shooter: LivingEntity?, gun: ItemStack): Float {
+        val tag = getRootTag(gun)
+        return getRootTag(shooter).getOrDefault(GunKeys.AIM_SHAKE_X_MODIFIER) * tag.getOrDefault(GunKeys.AIM_SHAKE_X_MODIFIER)
+    }
+
+    fun getAimShakeYModifier(shooter: LivingEntity?, gun: ItemStack): Float {
+        val tag = getRootTag(gun)
+        return getRootTag(shooter).getOrDefault(GunKeys.AIM_SHAKE_Y_MODIFIER) * tag.getOrDefault(GunKeys.AIM_SHAKE_Y_MODIFIER)
+    }
+
+    fun getAimShakeFrequencyModifier(shooter: LivingEntity?, gun: ItemStack): Float {
+        val tag = getRootTag(gun)
+        return getRootTag(shooter).getOrDefault(GunKeys.AIM_SHAKE_FREQUENCY_MODIFIER) * tag.getOrDefault(GunKeys.AIM_SHAKE_FREQUENCY_MODIFIER)
+    }
+
     fun getRecoilModifier(shooter: LivingEntity?, gun: ItemStack, type: InaccuracyType?): Float {
         val key = GunKeys.getRecoilKey(type)
         val allKey = GunKeys.getRecoilKey(null)
@@ -259,6 +274,17 @@ object GunExtras {
     fun setSpreadModifier(gun: ItemStack, type: InaccuracyType?, value: Float) {
         val tag = getOrCreateRootTag(gun)
         tag.set(GunKeys.getSpreadKey(type), value)
+    }
+
+    fun getJumpSpreadModifier(shooter: LivingEntity?, gun: ItemStack): Float {
+        val gunBaseJumpSpreadModifier = IAccessorGunData.getExtraHolder(gun)?.jumpSpreadModifier ?: 1.0f
+        val tag = getRootTag(gun)
+        return getRootTag(shooter).getOrDefault(GunKeys.JUMP_SPREAD_MODIFIER) * tag.getOrDefault(GunKeys.JUMP_SPREAD_MODIFIER) * gunBaseJumpSpreadModifier
+    }
+
+    fun setJumpSpreadModifier(gun: ItemStack, value: Float) {
+        val tag = getOrCreateRootTag(gun)
+        tag.set(GunKeys.JUMP_SPREAD_MODIFIER, value)
     }
 
     fun getReloadTimeModifier(shooter: LivingEntity?, gun: ItemStack): Float {
@@ -379,7 +405,7 @@ object GunExtras {
             if (index != null) {
                 val builtin = index.gunData.builtInAttachments
                 if (builtin.containsKey(type)) {
-                    return builtin[type]!!
+                    return builtin[type]?.displayAttachment ?: DefaultAssets.EMPTY_ATTACHMENT_ID
                 }
             }
 

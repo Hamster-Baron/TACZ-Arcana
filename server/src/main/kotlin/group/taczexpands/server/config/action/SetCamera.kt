@@ -1,6 +1,7 @@
 package group.taczexpands.server.config.action
 
 import group.taczexpands.common.data.CoordinateType
+import group.taczexpands.common.data.CameraPath as CommonCameraPath
 import group.taczexpands.common.network.s2c.S2CRaw
 import group.taczexpands.common.network.v2.s2c.S2CSendCameraPath
 import group.taczexpands.common.util.JSON
@@ -13,6 +14,7 @@ import group.taczexpands.server.context.Context
 import group.taczexpands.server.expression.ExpressionHelper
 import group.taczexpands.server.network.NetworkManager
 import group.taczexpands.server.skill.Skill
+import group.taczexpands.server.util.CameraViewStateManager
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToByteArray
@@ -40,8 +42,8 @@ data class SetCamera(
         val durationMillis: String?,
         val coordinateType: CoordinateType
     ) {
-        fun toCommon(context: Context, target: LivingEntity?): group.taczexpands.common.data.CameraPath {
-            return group.taczexpands.common.data.CameraPath(
+        fun toCommon(context: Context, target: LivingEntity?): CommonCameraPath {
+            return CommonCameraPath(
                 x?.let { ExpressionHelper.initExpression(it, context, target).evaluate().numberValue.toDouble() },
                 y?.let { ExpressionHelper.initExpression(it, context, target).evaluate().numberValue.toDouble() },
                 z?.let { ExpressionHelper.initExpression(it, context, target).evaluate().numberValue.toDouble() },
@@ -64,7 +66,9 @@ data class SetCamera(
     override fun execute(skill: Skill, context: Context, data: PrepareData) {
         data.selector.getTargets(context).forEach { target ->
             if (target !is ServerPlayer) return@forEach
-            NetworkManager.sendToPlayer(S2CSendCameraPath(!lockMove, !lockRotate, paths.map { it.toCommon(context, target) }).create(), target)
+            val cameraPaths = paths.map { it.toCommon(context, target) }
+            val session = CameraViewStateManager.startCameraPath(target, cameraPaths)
+            NetworkManager.sendToPlayer(S2CSendCameraPath(!lockMove, !lockRotate, cameraPaths, session?.id ?: 0L).create(), target)
         }
     }
 }

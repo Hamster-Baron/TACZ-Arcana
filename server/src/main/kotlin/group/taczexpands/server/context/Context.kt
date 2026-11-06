@@ -2,9 +2,10 @@ package group.taczexpands.server.context
 
 import com.tacz.guns.api.event.common.EntityHurtByGunEvent
 import com.tacz.guns.entity.EntityKineticBullet
-import group.taczexpands.server.accessor.IAccessorBullet
+import group.taczexpands.server.accessor.IAccessorServerBullet
 import group.taczexpands.server.accessor.IAccessorHitVec
 import group.taczexpands.server.util.immutable
+import group.taczexpands.server.util.CameraTraceEvaluationScope
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.util.Mth
@@ -17,6 +18,7 @@ import net.minecraftforge.server.ServerLifecycleHooks
 
 open class Context @JvmOverloads constructor(private val _self: ServerPlayer, val from: Event? = null) {
     val serverTick = ServerLifecycleHooks.getCurrentServer().tickCount
+    internal var cameraTraceEvaluationScope: CameraTraceEvaluationScope? = null
     val self: ServerPlayer
         get() {
             return _self
@@ -67,7 +69,7 @@ open class Context @JvmOverloads constructor(private val _self: ServerPlayer, va
             else if (this is HookBlockContext)
                 this._blockHitResult.blockPos
             else
-                (this.bullet as? IAccessorBullet)?.`taczexpands$getOverridePosition`()
+                (this.bullet as? IAccessorServerBullet)?.`taczexpands$getOverridePosition`()
                     ?.let { BlockPos(Mth.floor(it.x), Mth.floor(it.y), Mth.floor(it.z)) } ?: this.bullet?.blockPosition()
 
         }
@@ -79,7 +81,7 @@ open class Context @JvmOverloads constructor(private val _self: ServerPlayer, va
             else if (this is HookBlockContext)
                 this._blockHitResult.location
             else
-                (this.bullet as? IAccessorBullet)?.`taczexpands$getOverridePosition`() ?: this.bullet?.position()
+                (this.bullet as? IAccessorServerBullet)?.`taczexpands$getOverridePosition`() ?: this.bullet?.position()
 
         }
 

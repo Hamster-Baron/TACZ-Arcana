@@ -8,7 +8,7 @@ import group.taczexpands.common.nbt.GunExtras
 import group.taczexpands.common.network.c2s.C2SActionKey
 import group.taczexpands.common.network.c2s.C2SActionKey.Action
 import group.taczexpands.common.network.s2c.S2CAction
-import group.taczexpands.common.network.s2c.S2CCancelAction
+import group.taczexpands.common.network.v2.s2c.S2CActionLockState
 import group.taczexpands.server.bullet.MissileManager
 import group.taczexpands.server.context.Context
 import group.taczexpands.server.listener.PlayerListener
@@ -17,12 +17,23 @@ import group.taczexpands.server.skill.ActionManager
 import group.taczexpands.server.skill.HookManager
 import group.taczexpands.server.skill.SkillManager
 import group.taczexpands.server.skill.TriggerType
+import group.taczexpands.server.util.CameraViewStateManager
+import net.minecraft.server.level.ServerPlayer
+import net.minecraft.util.Mth
 import net.minecraftforge.network.NetworkEvent
 import java.util.function.BiConsumer
 import java.util.function.Supplier
 import kotlin.jvm.optionals.getOrNull
 
 object C2SActionKeyImpl {
+    private const val MAX_CAMERA_INPUT_LENGTH_SQUARED = 3.000001
+
+    private fun refreshUnderBarrelState(player: ServerPlayer) {
+        val data = IGunOperator.fromLivingEntity(player).dataHolder
+        data.cancelGunScriptState()
+        data.gunScriptFailed = false
+        data.setCurrentGunItem { player.mainHandItem }
+    }
 
     @JvmStatic
     fun getHandler(): BiConsumer<C2SActionKey, Supplier<NetworkEvent.Context>> {
@@ -61,6 +72,7 @@ object C2SActionKeyImpl {
                             val currentUsing = GunExtras.getUsingUnderBarrel(mainHand)
                             if (currentUsing) {
                                 GunExtras.setUsingUnderBarrel(mainHand, false)
+                                refreshUnderBarrelState(player)
                                 AttachmentPropertyManager.postChangeEvent(player, mainHand)
                                 player.inventoryMenu.broadcastChanges()
                                 NetworkManager.sendToPlayer(S2CAction(S2CAction.Action.Draw, 2), player)
@@ -71,6 +83,7 @@ object C2SActionKeyImpl {
                                 TimelessAPI.getCommonGunIndex(underBarrel.gunId).getOrNull()
                                     ?: return@enqueueWork
                                 GunExtras.setUsingUnderBarrel(mainHand, true)
+                                refreshUnderBarrelState(player)
                                 AttachmentPropertyManager.postChangeEvent(player, mainHand)
                                 player.inventoryMenu.broadcastChanges()
                                 NetworkManager.sendToPlayer(S2CAction(S2CAction.Action.Draw, 1), player)
@@ -102,7 +115,7 @@ object C2SActionKeyImpl {
                     }
 
                     Action.SHOOT_DOWN -> {
-                        if (!ActionManager.shouldCancel(player, S2CCancelAction.Action.ShootKey))
+                        if (!ActionManager.shouldCancel(player, S2CActionLockState.Action.ShootKey))
                             PlayerListener.getPlayerStates(player).shootKeyDown = true
                     }
 
@@ -113,15 +126,18 @@ object C2SActionKeyImpl {
                     Action.CAMERA -> {
                         val cameraData = MissileManager.tvGuidancePlayers[player] ?: return@enqueueWork
                         if (cameraData.yaw == null || cameraData.pitch == null) return@enqueueWork
-                        if (packet.yaw != null && packet.pitch != null && packet.input != null) {
-                            cameraData.yaw = packet.yaw
-                            cameraData.pitch = packet.pitch
-                            cameraData.input = packet.input!!
-                        }
+                        val yaw = packet.yaw ?: return@enqueueWork
+                        val pitch = packet.pitch ?: return@enqueueWork
+                        val input = packet.input ?: return@enqueueWork
+                        if (!isValidCameraRotation(yaw, pitch) || !input.x.isFinite() || !input.y.isFinite() || !input.z.isFinite() || input.lengthSqr() > MAX_CAMERA_INPUT_LENGTH_SQUARED) return@enqueueWork
+                        cameraData.yaw = Mth.wrapDegrees(yaw)
+                        cameraData.pitch = pitch
+                        cameraData.input = input
                     }
 
                     Action.UNBIND_CAMERA -> {
-                        MissileManager.tvGuidancePlayers.remove(player) ?: return@enqueueWork
+                        MissileManager.tvGuidancePlayers.remove(player)
+                        CameraViewStateManager.clearRemoteProjectile(player)
                     }
 
                     Action.INSPECT -> {
@@ -150,13 +166,17 @@ object C2SActionKeyImpl {
                         val camera = state.clientCamera!!
 
                         if (packet.yaw != null && packet.pitch != null) {
-                            camera.yaw = packet.yaw!!
-                            camera.pitch = packet.pitch!!
+                            val yaw = packet.yaw!!
+                            val pitch = packet.pitch!!
+                            if (!isValidCameraRotation(yaw, pitch)) return@enqueueWork
+                            camera.yaw = Mth.wrapDegrees(yaw)
+                            camera.pitch = pitch
                         }
                     }
 
                     Action.UNBIND_CLIENT_CAMERA -> {
                         PlayerListener.getPlayerStates(player).clientCamera = null
+                        CameraViewStateManager.clearCameraPath(player)
                     }
 
                     Action.UPDATE_CHARGE -> {
@@ -169,5 +189,9 @@ object C2SActionKeyImpl {
 
             it.packetHandled = true
         }
+    }
+
+    private fun isValidCameraRotation(yaw: Float, pitch: Float): Boolean {
+        return yaw.isFinite() && pitch.isFinite() && pitch in -90f..90f
     }
 }

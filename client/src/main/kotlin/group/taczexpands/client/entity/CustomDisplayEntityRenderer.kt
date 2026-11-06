@@ -26,24 +26,19 @@ class CustomDisplayEntityRenderer(context: EntityRendererProvider.Context) : Ent
     }
 
     override fun render(entity: CustomDisplayEntity, entityYaw: Float, partialTicks: Float, poseStack: PoseStack, buffer: MultiBufferSource, packedLight: Int) {
-        try {
-            val instance = CustomDisplayManager.getInstance(entity) ?: return
-            poseStack.pushPose()
-
-            poseStack.mulPose(Axis.YP.rotationDegrees(Mth.lerp(partialTicks, entity.yRotO, entity.yRot) - 180.0f))
-            poseStack.mulPose(Axis.XP.rotationDegrees(Mth.lerp(partialTicks, entity.xRotO, entity.xRot)))
-            poseStack.translate(0.0, 1.5, 0.0)
-            poseStack.scale(-1f, -1f, 1f)
-            instance.controller?.update()
-            instance.model.render(poseStack,
-                ItemDisplayContext.GROUND,
-                RenderType.entityTranslucent(instance.textureID),
-                packedLight,
-                OverlayTexture.NO_OVERLAY)
-
-            poseStack.popPose()
-        } catch (e: Exception) {
-        }
+        val instance = CustomDisplayManager.getInstance(entity) ?: return
+        poseStack.pushPose()
+        poseStack.mulPose(Axis.YP.rotationDegrees(Mth.lerp(partialTicks, entity.yRotO, entity.yRot) - 180.0f))
+        poseStack.mulPose(Axis.XP.rotationDegrees(Mth.lerp(partialTicks, entity.xRotO, entity.xRot)))
+        poseStack.translate(0.0, 1.5, 0.0)
+        poseStack.scale(-1f, -1f, 1f)
+        instance.controller?.update()
+        instance.model.render(poseStack,
+            ItemDisplayContext.GROUND,
+            RenderType.entityTranslucent(instance.textureID),
+            packedLight,
+            OverlayTexture.NO_OVERLAY)
+        poseStack.popPose()
     }
 
 

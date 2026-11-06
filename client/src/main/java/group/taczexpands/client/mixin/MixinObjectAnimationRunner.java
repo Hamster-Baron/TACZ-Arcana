@@ -22,7 +22,7 @@ public abstract class MixinObjectAnimationRunner implements IAccessorObjectAnima
         this.taczexpands$speed = speed;
     }
 
-    @ModifyVariable(method = "update", at = @At("STORE"), ordinal = 2)
+    @ModifyVariable(method = "update", at = @At("STORE"), name = "alphaProgress")
     private long modifyProgress(long alphaProgress) {
         return (long) (alphaProgress * taczexpands$speed);
     }

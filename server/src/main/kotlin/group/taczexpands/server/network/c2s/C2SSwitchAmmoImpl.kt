@@ -16,6 +16,7 @@ import group.taczexpands.common.network.c2s.C2SSwitchAmmo
 import group.taczexpands.common.network.s2c.S2CAction
 import group.taczexpands.server.config.ServerConfig
 import group.taczexpands.server.context.Context
+import group.taczexpands.server.context.AmmoChangeRequestContext
 import group.taczexpands.server.network.NetworkManager
 import group.taczexpands.server.skill.SkillManager
 import group.taczexpands.server.skill.TriggerType
@@ -38,7 +39,11 @@ object C2SSwitchAmmoImpl {
         context.get().let {
             it.enqueueWork {
                 val player = it.sender ?: return@enqueueWork
-                setAmmoType(player, packet.ammoType)
+                val request = AmmoChangeRequestContext(player, packet.ammoType)
+                SkillManager.trigger(TriggerType.REQUEST_CHANGE_AMMO, request)
+                if (request.isBlocked != true) {
+                    setAmmoType(player, packet.ammoType)
+                }
             }
             it.packetHandled = true
         }
@@ -129,11 +134,9 @@ object C2SSwitchAmmoImpl {
                     return amount to true
                 }
 
-                if (iAmmoBox.getAmmoId(inventoryItem) == ammoId) {
-                    if (iAmmoBox.isCreative(inventoryItem)) {
-                        amount = 9999
-                        return amount to false
-                    }
+                if (iAmmoBox.getAmmoId(inventoryItem) != ammoId) continue
+                if (iAmmoBox.isCreative(inventoryItem)) {
+                    return 9999 to false
                 }
                 amount += iAmmoBox.getAmmoCount(inventoryItem)
             }

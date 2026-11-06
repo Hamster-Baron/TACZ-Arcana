@@ -1,6 +1,6 @@
 package group.taczexpands.server.mixin;
 
-import group.taczexpands.server.override.CycleTaskHelperOverride;
+import group.taczexpands.server.scheduler.CycleTaskScheduler;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -10,6 +10,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class MixinServerTickEvent {
     @Inject(method = "onServerTick", at = @At("TAIL"))
     private static void postOnServerTick(CallbackInfo ci) {
-        CycleTaskHelperOverride.tick();
+        CycleTaskScheduler.tick();
     }
 }

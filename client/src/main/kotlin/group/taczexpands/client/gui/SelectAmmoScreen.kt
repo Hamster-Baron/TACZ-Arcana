@@ -187,8 +187,8 @@ class SelectAmmoScreen(ammo: List<ResourceLocation>) : Screen(Component.literal(
                         amount = 9999
                         return amount
                     }
+                    amount += iAmmoBox.getAmmoCount(inventoryItem)
                 }
-                amount += iAmmoBox.getAmmoCount(inventoryItem)
             }
         }
         return amount

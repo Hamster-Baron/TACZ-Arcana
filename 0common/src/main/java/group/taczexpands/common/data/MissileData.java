@@ -70,6 +70,12 @@ public class MissileData {
     @SerializedName("proximity_fuze_range")
     public float proximityFuzeRange = 0.0f;
 
+    @SerializedName("proximity_fuze_arming_ticks")
+    public int proximityFuzeArmingTicks = 0;
+
+    @SerializedName("proximity_fuze_arming_distance")
+    public float proximityFuzeArmingDistance = 0.0f;
+
     @SerializedName("targetable_entity_types")
     public List<String> targetableEntityTypes = new ArrayList<>();
 

@@ -11,6 +11,7 @@ import com.tacz.guns.resource.index.CommonGunIndex
 import group.taczexpands.common.accessor.IAccessorMiscPOJO
 import group.taczexpands.common.entity.CustomDisplayEntity
 import group.taczexpands.common.event.CommonListener
+import group.taczexpands.common.network.RotationNetwork
 import net.minecraft.client.Minecraft
 import net.minecraft.core.NonNullList
 import net.minecraft.core.registries.Registries
@@ -171,20 +172,19 @@ class TACZExpandsCommon {
             clazz.getDeclaredConstructor().newInstance()
             LOGGER.info("Server init.")
         } catch (e: ClassNotFoundException) {
+            LOGGER.debug("Server entry point is unavailable in this artifact", e)
         }
 
-        try {
-            DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
-                Runnable {
-                    try {
-                        val clazz = Class.forName("group.taczexpands.client.TACZExpandsClient")
-                        clazz.getDeclaredConstructor().newInstance()
-                        LOGGER.info("Client init.")
-                    } catch (e: ClassNotFoundException) {
-                    }
+        DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
+            Runnable {
+                try {
+                    val clazz = Class.forName("group.taczexpands.client.TACZExpandsClient")
+                    clazz.getDeclaredConstructor().newInstance()
+                    LOGGER.info("Client init.")
+                } catch (e: ClassNotFoundException) {
+                    LOGGER.debug("Client entry point is unavailable in this artifact", e)
                 }
             }
-        } catch (e: Throwable) {
         }
 
         try {
@@ -192,6 +192,8 @@ class TACZExpandsCommon {
             clazz.getDeclaredConstructor().newInstance()
             LOGGER.info("Hybrid init.")
         } catch (e: ClassNotFoundException) {
+            LOGGER.debug("Hybrid entry point is unavailable in this artifact", e)
         }
+        RotationNetwork.register()
     }
 }

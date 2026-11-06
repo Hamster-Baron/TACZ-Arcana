@@ -32,10 +32,14 @@ object GunKeys {
     val EXTRA_AMMO = NullableResourceLocationKey("ExtraAmmo").register()
 
     val RPM_MODIFIER = FloatKey("RPMModifier", { 1.0f }).registerModifier()
+    val AIM_SHAKE_X_MODIFIER = FloatKey("AimShakeXModifier", { 1.0f }).registerModifier()
+    val AIM_SHAKE_Y_MODIFIER = FloatKey("AimShakeYModifier", { 1.0f }).registerModifier()
+    val AIM_SHAKE_FREQUENCY_MODIFIER = FloatKey("AimShakeFrequencyModifier", { 1.0f }).registerModifier()
     val RELOAD_TIME_MODIFIER = FloatKey("ReloadTimeModifier", { 1.0f }).registerModifier()
     val AIM_TIME_MODIFIER = FloatKey("AimTimeModifier", { 1.0f }).registerModifier()
     val DRAW_TIME_MODIFIER = FloatKey("DrawSpeedModifier", { 1.0f }).registerModifier()
     val BOLT_TIME_MODIFIER = FloatKey("BoltSpeedModifier", { 1.0f }).registerModifier()
+    val JUMP_SPREAD_MODIFIER = FloatKey("JumpSpreadModifier", { 1.0f }).registerModifier()
     private val INACCURACY_TYPE_MAP = (listOf(null) + InaccuracyType.entries).associateWith {
         val prefix = it?.name ?: "All"
         FloatKey("${prefix}RecoilModifier", { 1.0f }).registerModifier() to FloatKey("${prefix}SpreadModifier", { 1.0f }).registerModifier()

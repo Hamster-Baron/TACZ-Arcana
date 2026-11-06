@@ -13,6 +13,7 @@ import group.taczexpands.common.network.s2c.S2CRaw
 import group.taczexpands.common.network.s2c.S2CSendVariable
 import group.taczexpands.common.network.s2c.S2CShake
 import group.taczexpands.common.network.s2c.S2CSound
+import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.resources.ResourceLocation
 import net.minecraftforge.network.NetworkDirection
 import net.minecraftforge.network.NetworkEvent
@@ -20,6 +21,7 @@ import net.minecraftforge.network.NetworkRegistry
 import java.lang.reflect.Modifier
 import java.util.Optional
 import java.util.function.BiConsumer
+import java.util.function.Function
 import java.util.function.Supplier
 
 object NetworkCommon {
@@ -37,7 +39,6 @@ object NetworkCommon {
     @Synchronized
     fun init(): Boolean {
         if (registered) return true
-        registered = true
 
         registerC2S(C2SActionKey::class.java, C2SActionKey.getEncoder(), C2SActionKey.getDecoder(), "group.taczexpands.server.network.c2s.C2SActionKeyImpl")
         registerC2S(C2SGetVariable::class.java, C2SGetVariable.getEncoder(), C2SGetVariable.getDecoder(), "group.taczexpands.server.network.c2s.C2SGetVariableImpl")
@@ -53,13 +54,14 @@ object NetworkCommon {
         registerS2C(S2CShake::class.java, S2CShake.getEncoder(), S2CShake.getDecoder(), "group.taczexpands.client.network.s2c.S2CShakeImpl")
         registerS2C(S2CSound::class.java, S2CSound.getEncoder(), S2CSound.getDecoder(), "group.taczexpands.client.network.s2c.S2CSoundImpl")
 
+        registered = true
         return true
     }
 
     private fun <MSG> registerC2S(
         type: Class<MSG>,
-        encoder: BiConsumer<MSG, net.minecraft.network.FriendlyByteBuf>,
-        decoder: java.util.function.Function<net.minecraft.network.FriendlyByteBuf, MSG>,
+        encoder: BiConsumer<MSG, FriendlyByteBuf>,
+        decoder: Function<FriendlyByteBuf, MSG>,
         handlerClass: String
     ) {
         CHANNEL.registerMessage(index++, type, encoder, decoder, reflectedHandler(handlerClass), Optional.of(NetworkDirection.PLAY_TO_SERVER))
@@ -67,8 +69,8 @@ object NetworkCommon {
 
     private fun <MSG> registerS2C(
         type: Class<MSG>,
-        encoder: BiConsumer<MSG, net.minecraft.network.FriendlyByteBuf>,
-        decoder: java.util.function.Function<net.minecraft.network.FriendlyByteBuf, MSG>,
+        encoder: BiConsumer<MSG, FriendlyByteBuf>,
+        decoder: Function<FriendlyByteBuf, MSG>,
         handlerClass: String
     ) {
         CHANNEL.registerMessage(index++, type, encoder, decoder, reflectedHandler(handlerClass), Optional.of(NetworkDirection.PLAY_TO_CLIENT))

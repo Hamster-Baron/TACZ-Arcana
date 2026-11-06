@@ -13,9 +13,9 @@ import group.taczexpands.common.data.GuidanceType
 import group.taczexpands.common.entity.EntityKineticBulletShared
 import group.taczexpands.common.nbt.GunExtras
 import group.taczexpands.common.network.s2c.S2CAction
-import group.taczexpands.common.network.s2c.S2CCancelAction
+import group.taczexpands.common.network.v2.s2c.S2CActionLockState
 import group.taczexpands.common.util.getFixedLookAngle
-import group.taczexpands.server.accessor.IAccessorBullet
+import group.taczexpands.server.accessor.IAccessorServerBullet
 import group.taczexpands.server.config.ServerConfig
 import group.taczexpands.server.entity.BulletExtraData
 import group.taczexpands.server.listener.PlayerListener
@@ -55,6 +55,7 @@ object MissileManager {
     val jammingEntities = mutableMapOf<Predicate<Entity>, Pair<Double, Double>>()
 
     fun reloadJammingEntities() {
+        MissileJammingRules.clearCaches()
         jammingEntities.clear()
         val list = ServerConfig.jammingEntities.get()
         for (entry in list) {
@@ -154,7 +155,7 @@ object MissileManager {
         val gunItem = ModItems.MODERN_KINETIC_GUN.get()
         val mainHand = player.mainHandItem
         if (mainHand.item != gunItem) {
-            ActionManager.removeCancel(player, S2CCancelAction.Action.MissileFire, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
+            ActionManager.removeInternalAction(player, S2CActionLockState.Action.MissileFire, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
             return
         }
 
@@ -162,7 +163,7 @@ object MissileManager {
 
         val gunIndex = TimelessAPI.getCommonGunIndex(gunID).getOrNull()
         if (gunIndex == null) {
-            ActionManager.removeCancel(player, S2CCancelAction.Action.MissileFire, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
+            ActionManager.removeInternalAction(player, S2CActionLockState.Action.MissileFire, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
             return
         }
 
@@ -174,12 +175,12 @@ object MissileManager {
                 if ((extraBulletData.missileData.isSimpleLocking || GunExtras.getEnforcingSimpleLocking(mainHand))
                     && (playerState.lockingTarget == null || playerState.lockingTime < extraBulletData.missileData.lockingTime)
                 ) {
-                    ActionManager.cancelAction(player, S2CCancelAction.Action.MissileFire, 999999, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
+                    ActionManager.cancelInternalAction(player, S2CActionLockState.Action.MissileFire, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
                     return
                 }
 
                 if (!extraBulletData.missileData.isSimpleLocking && !GunExtras.getEnforcingSimpleLocking(mainHand) && playerState.skillLockingTarget == null) {
-                    ActionManager.cancelAction(player, S2CCancelAction.Action.MissileFire, 999999, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
+                    ActionManager.cancelInternalAction(player, S2CActionLockState.Action.MissileFire, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
                     return
                 }
             }
@@ -188,14 +189,14 @@ object MissileManager {
                 val cameraData = tvGuidancePlayers[player]
                 if (cameraData != null) {
                     if (cameraData.bullet == null || !cameraData.bullet!!.isRemoved) {
-                        ActionManager.cancelAction(player, S2CCancelAction.Action.MissileFire, 999999, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
+                        ActionManager.cancelInternalAction(player, S2CActionLockState.Action.MissileFire, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
                         return
                     }
                 }
             }
         }
 
-        ActionManager.removeCancel(player, S2CCancelAction.Action.MissileFire, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
+        ActionManager.removeInternalAction(player, S2CActionLockState.Action.MissileFire, INTERNAL_MISSILE_CANCEL_IDENTIFIER)
     }
 
     fun updateClientLockingStatus(player: ServerPlayer, playerState: PlayerListener.PlayerState) {
@@ -226,56 +227,28 @@ object MissileManager {
         }
 
         if ((extraBulletData.missileData.isSimpleLocking || GunExtras.getEnforcingSimpleLocking(mainHand))) {
-            if (playerState.lockingTarget == null) {
+            val lockingTarget = LockingTargetResolver.resolve(player, LockingTargetResolver.Mode.RAW)
+            if (lockingTarget == null) {
                 playerState.currentClientBindingTarget = 0
                 playerState.currentClientBindingLockingTime = 1
             } else {
-                playerState.currentClientBindingTarget = playerState.lockingTarget!!.id
+                playerState.currentClientBindingTarget = lockingTarget.id
                 playerState.currentClientBindingLockingTime = extraBulletData.missileData.lockingTime
             }
         } else {
-            if (playerState.skillLockingTarget == null) {
+            val lockingTarget = LockingTargetResolver.resolve(player, LockingTargetResolver.Mode.SKILL)
+            if (lockingTarget == null) {
                 playerState.currentClientBindingTarget = 0
                 playerState.currentClientBindingLockingTime = 1
             } else {
-                playerState.currentClientBindingTarget = playerState.skillLockingTarget!!.id
+                playerState.currentClientBindingTarget = lockingTarget.id
                 playerState.currentClientBindingLockingTime = 1
             }
         }
     }
 
     fun getPlayerLockingTarget(player: ServerPlayer, bypassAiming: Boolean = false): Entity? {
-        val playerState = PlayerListener.getPlayerStates(player)
-        if (playerState.lockingTarget == null) {
-            return null
-        }
-
-        val gunItem = ModItems.MODERN_KINETIC_GUN.get()
-        val mainHand = player.mainHandItem
-        if (mainHand.item != gunItem) {
-            return null
-        }
-
-        if (!bypassAiming && !IGunOperator.fromLivingEntity(player).synIsAiming) {
-            return null
-        }
-
-        val gunID = gunItem.getGunId(mainHand)
-
-        val gunIndex = TimelessAPI.getCommonGunIndex(gunID).getOrNull()
-        if (gunIndex == null) {
-            return null
-        }
-
-        val bulletData = IAccessorGunData.getCurrentBulletData(gunIndex.gunData, mainHand)
-
-        val extraBulletData = IAccessorBulletData.getBulletExtraHolder(bulletData)
-
-        if (extraBulletData.missileData.isMissile && playerState.lockingTime >= extraBulletData.missileData.lockingTime) {
-            return playerState.lockingTarget
-        }
-
-        return null
+        return LockingTargetResolver.resolve(player, LockingTargetResolver.Mode.SIMPLE, !bypassAiming)
     }
 
 
@@ -439,7 +412,7 @@ object MissileManager {
     fun updateIsMissileTick(missile: EntityKineticBullet) {
         if (missile.level().isClientSide) return
 
-        val extraData = (missile as IAccessorBullet).`taczexpands$getBulletExtraData`()
+        val extraData = (missile as IAccessorServerBullet).`taczexpands$getBulletExtraData`()
         val bulletData = extraData.bulletData ?: return
         val extraHolder = (bulletData as IAccessorBulletData).`taczexpands$getExtraHolder`()
         if (!extraHolder.missileData.isMissile) return
@@ -451,7 +424,7 @@ object MissileManager {
     fun bulletInit(missile: EntityKineticBullet): Boolean {
         if (missile.level().isClientSide) return false
 
-        val extraData = (missile as IAccessorBullet).`taczexpands$getBulletExtraData`()
+        val extraData = (missile as IAccessorServerBullet).`taczexpands$getBulletExtraData`()
         val bulletData = extraData.bulletData ?: return false
         val extraHolder = (bulletData as IAccessorBulletData).`taczexpands$getExtraHolder`()
         if (!extraHolder.missileData.isMissile) return false
@@ -521,7 +494,7 @@ object MissileManager {
     }
 
     fun isMissileDrone(missile: EntityKineticBullet): Boolean {
-        val extraData = (missile as IAccessorBullet).`taczexpands$getBulletExtraData`()
+        val extraData = (missile as IAccessorServerBullet).`taczexpands$getBulletExtraData`()
         val bulletData = extraData.bulletData ?: return false
         val extraHolder = (bulletData as IAccessorBulletData).`taczexpands$getExtraHolder`()
         if (!extraHolder.missileData.isMissile) return false
@@ -531,7 +504,7 @@ object MissileManager {
     fun onMissileBulletTick(missile: EntityKineticBullet): Pair<Boolean, Boolean> {
         if (missile.level().isClientSide) return false to false
 
-        val extraData = (missile as IAccessorBullet).`taczexpands$getBulletExtraData`()
+        val extraData = (missile as IAccessorServerBullet).`taczexpands$getBulletExtraData`()
         val bulletData = extraData.bulletData ?: return false to false
         val extraHolder = (bulletData as IAccessorBulletData).`taczexpands$getExtraHolder`()
         if (!extraHolder.missileData.isMissile) return false to false
@@ -544,14 +517,8 @@ object MissileManager {
             data.dataHolder.isFirstTick = false
 
             val serverLevel = missile.level() as? ServerLevel ?: return false to false
-            try {
-                (((serverLevel.chunkSource.chunkMap as IAccessorChunkMap).entityMap.get(missile.id) as IAccessorTrackedEntity).serverEntity as IAccessorServerEntity).setUpdateInterval(
-                    1
-                )
-            } catch (e: Exception) {
-                LOGGER.error("SEVERE!!!!!!")
-                e.printStackTrace()
-            }
+            val trackedEntity = (serverLevel.chunkSource.chunkMap as IAccessorChunkMap).entityMap.get(missile.id) as? IAccessorTrackedEntity
+            (trackedEntity?.serverEntity as? IAccessorServerEntity)?.setUpdateInterval(1)
         }
 
 
@@ -593,12 +560,8 @@ object MissileManager {
                 }
 
                 val serverLevel = missile.level() as? ServerLevel ?: return true to false
-                try {
-                    ((serverLevel.chunkSource.chunkMap as IAccessorChunkMap).entityMap.get(missile.id) as IAccessorTrackedEntity).setRange(32 * 16)
-                } catch (e: Exception) {
-                    LOGGER.error("SEVERE!!!!!!")
-                    e.printStackTrace()
-                }
+                val trackedEntity = (serverLevel.chunkSource.chunkMap as IAccessorChunkMap).entityMap.get(missile.id) as? IAccessorTrackedEntity
+                trackedEntity?.setRange(32 * 16)
                 missile.entityData.set(EntityKineticBulletShared.TV_SPEED_DATA_ACCESSOR, missile.deltaMovement.length().toFloat())
                 return true to false
             }
@@ -646,7 +609,7 @@ object MissileManager {
 
         if (!data.bulletExtraData.missileData.isSimpleLocking && !data.dataHolder.enforcingSimpleLocking) {
             val playerState = PlayerListener.getPlayerStates(owner)
-            data.dataHolder.target = playerState.skillLockingTarget
+            data.dataHolder.target = LockingTargetResolver.resolve(owner, LockingTargetResolver.Mode.SKILL)
             data.dataHolder.targetPos = playerState.skillLockingPos
         } else {
             if (data.bulletExtraData.missileData.guidanceType == GuidanceType.SEMI_ACTIVE_LASER) {
@@ -715,7 +678,7 @@ object MissileManager {
                 ).sortedBy { it.getCenterPosition().distanceToSqr(missilePos) }) {
                     val entity = if (tempEntity is EnderDragonPart && tempEntity.parentMob != null) tempEntity.parentMob!! else tempEntity
 
-                    for ((predicate, efficiency) in jammingEntities) {
+                    for ((predicate, efficiency) in MissileJammingRules.resolve(jammingEntities, missile)) {
                         if (!predicate.test(entity)) continue
                         if (missile.canSee(entity, data.bulletExtraData.missileData.maxJammableDistance.toDouble())) continue
                         val distanceToTarget = entity.getCenterPosition().subtract(missile.getCenterPosition()).length()
@@ -767,7 +730,7 @@ object MissileManager {
         }
 
         if (target != null) {
-            if (data.bulletExtraData.missileData.proximityFuzeRange > 0) {
+            if (data.bulletExtraData.missileData.proximityFuzeRange > 0 && data.dataHolder.isProximityFuzeArmed(missile, data.bulletExtraData)) {
                 val distanceToTarget = target.getCenterPosition().subtract(missile.getCenterPosition()).length()
                 if (distanceToTarget <= data.bulletExtraData.missileData.proximityFuzeRange) {
                     return true to true

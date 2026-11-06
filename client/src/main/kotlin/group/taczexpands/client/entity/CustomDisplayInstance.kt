@@ -16,12 +16,12 @@ class CustomDisplayInstance(val entity: CustomDisplayEntity, val modelID: Resour
     var deathAnimationPlayed = false
 
     init {
-        val modelPOJO = ClientAssetsManager.INSTANCE.getBedrockModelPOJO(modelID) ?: throw RuntimeException("custom modelID not found")
+        val modelPOJO = ClientAssetsManager.INSTANCE.getBedrockModelPOJO(modelID) ?: throw IllegalArgumentException("custom modelID not found: $modelID")
         val model = if (BedrockVersion.isLegacyVersion(modelPOJO) && modelPOJO.geometryModelLegacy != null) {
             BedrockAnimatedModel(modelPOJO, BedrockVersion.LEGACY)
         } else if (BedrockVersion.isNewVersion(modelPOJO) && modelPOJO.geometryModelNew != null) {
             BedrockAnimatedModel(modelPOJO, BedrockVersion.NEW)
-        } else throw RuntimeException("custom model version mismatched")
+        } else throw IllegalArgumentException("custom model version mismatched: $modelID")
 
         val controller = if (animationID == null) {
             AnimationController(mutableListOf(), model)

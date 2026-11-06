@@ -4,18 +4,20 @@ import group.taczexpands.server.config.SelectorInstance
 import group.taczexpands.server.context.Context
 import group.taczexpands.server.expression.ExpressionInstance
 import group.taczexpands.server.util.schedule
+import group.taczexpands.server.util.CameraTraceEvaluation
 import group.taczexpands.server.skill.*
 
 interface Action {
     val delay: Int?
 
     fun perform(skill: Skill, context: Context) {
-        val data = prepare(skill, context)
+        if (!skill.isActive) return
+        val data = CameraTraceEvaluation.withFreshScope(context) { prepare(skill, context) }
         if (delay == null || delay!! <= 0) {
-            execute(skill, context, data)
+            CameraTraceEvaluation.withFreshScope(context) { execute(skill, context, data) }
         } else {
             schedule(skill, context.self, delay!!) {
-                execute(skill, context, data)
+                CameraTraceEvaluation.withFreshScope(context) { execute(skill, context, data) }
             }
         }
     }
@@ -25,6 +27,14 @@ interface Action {
     }
 
     fun execute(skill: Skill, context: Context, data: PrepareData)
+}
+
+fun Action.performAction(skill: Skill, context: Context) {
+    try {
+        perform(skill, context)
+    } catch (e: Exception) {
+        skill.reportExecutionError(e)
+    }
 }
 
 open class PrepareData() {

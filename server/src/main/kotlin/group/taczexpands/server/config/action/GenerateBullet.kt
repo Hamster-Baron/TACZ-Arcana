@@ -3,7 +3,7 @@ package group.taczexpands.server.config.action
 import com.tacz.guns.api.TimelessAPI
 import com.tacz.guns.entity.EntityKineticBullet
 import com.tacz.guns.sound.SoundManager
-import group.taczexpands.server.accessor.IAccessorBullet
+import group.taczexpands.server.accessor.IAccessorServerBullet
 import group.taczexpands.server.bullet.CameraData
 import group.taczexpands.server.bullet.MissileManager
 import group.taczexpands.server.config.SelectorData
@@ -25,6 +25,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.util.Mth
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.item.ItemStack
 import net.minecraftforge.common.MinecraftForge
 import kotlin.jvm.optionals.getOrNull
 import kotlin.random.Random
@@ -102,10 +103,13 @@ data class GenerateBullet(
                 MissileManager.tvGuidancePlayers[target] = CameraData()
             }
 
+            val sourceGun = context.bullet?.let {
+                (it as IAccessorServerBullet).`taczexpands$getGunItem`() ?: ItemStack.EMPTY
+            } ?: target.mainHandItem
             val entity = EntityKineticBullet(
                 target.level(),
                 target,
-                target.mainHandItem,
+                sourceGun,
                 gunIndex.gunData.ammoId,
                 gunId,
                 gunIndex.pojo.display,
@@ -122,7 +126,7 @@ data class GenerateBullet(
 
             val speed = Mth.clamp(gunIndex.gunData.bulletData.speed / 20.0f, 0f, Float.MAX_VALUE)
 
-            (entity as IAccessorBullet).`taczexpands$initCustomData`(x, y, z, speed)
+            (entity as IAccessorServerBullet).`taczexpands$initCustomData`(x, y, z, speed)
             entity.shootFromRotation(target, pitch, yaw, 0.0f, speed, inaccuracy)
             level.addFreshEntity(entity)
             if (soundDistance > 0) {

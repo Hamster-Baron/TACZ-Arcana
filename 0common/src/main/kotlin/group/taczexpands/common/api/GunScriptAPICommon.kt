@@ -25,4 +25,10 @@ object GunScriptAPICommon {
     var modifyDelegate: ((LivingEntity, String, String, String) -> Unit)? = null
 
     var storeLockingTarget: ((LivingEntity) -> Unit)? = null
+
+    var windowWidthClientDelegate: (() -> Int)? = null
+    var windowHeightClientDelegate: (() -> Int)? = null
+    var guiScaledWidthClientDelegate: (() -> Int)? = null
+    var guiScaledHeightClientDelegate: (() -> Int)? = null
+    var guiScaleClientDelegate: (() -> Double)? = null
 }

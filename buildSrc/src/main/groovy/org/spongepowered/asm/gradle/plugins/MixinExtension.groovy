@@ -647,6 +647,9 @@ public class MixinExtension {
         if (!(compileTask instanceof JavaCompile)) {
             throw new InvalidUserDataException(sprintf('Cannot add non-java %s to mixin processor', set))
         }
+
+        // The processor rebuilds its metadata from the full source set after doFirst clears it.
+        compileTask.options.incremental = false
         
                 this.applyDefault = false
 
@@ -660,6 +663,7 @@ public class MixinExtension {
         compileTask.ext.refMapFile = refMapFile
         set.ext.refMapFile = refMapFile
         compileTask.ext.refMap = set.ext.refMap.toString()
+        compileTask.outputs.files(refMapFile, tsrgFile)
 
                         if (this.projectType == 'userdev') {
             compileTask.dependsOn("createMcpToSrg")
@@ -683,6 +687,7 @@ public class MixinExtension {
         }
 
                                         File taskSpecificRefMap = new ArtefactSpecificRefmap(refMapFile.parentFile, compileTask.ext.refMap)
+        compileTask.outputs.file(taskSpecificRefMap)
 
                         compileTask.doLast {
                         taskSpecificRefMap.delete()

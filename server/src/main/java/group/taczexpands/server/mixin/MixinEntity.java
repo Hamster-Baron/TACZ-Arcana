@@ -1,7 +1,7 @@
 package group.taczexpands.server.mixin;
 
 import com.tacz.guns.entity.EntityKineticBullet;
-import group.taczexpands.server.accessor.IAccessorBullet;
+import group.taczexpands.server.accessor.IAccessorServerBullet;
 import group.taczexpands.server.accessor.IAccessorEntity;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -34,17 +34,17 @@ public class MixinEntity implements IAccessorEntity {
     @Inject(method = "discard", at = @At("HEAD"))
     public void onDiscard(CallbackInfo ci) {
         if ((Object) this instanceof EntityKineticBullet) {
-            ((IAccessorBullet) ((EntityKineticBullet) ((Object) this))).taczexpands$onDiscard();
+            ((IAccessorServerBullet) ((EntityKineticBullet) ((Object) this))).taczexpands$onDiscard();
         }
     }
 
     @Redirect(method = "baseTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;hurt(Lnet/minecraft/world/damagesource/DamageSource;F)Z"))
-    public boolean redirectHurt(Entity instance, DamageSource p_19946_, float p_19947_) {
-        var result = instance.hurt(p_19946_, p_19947_);
-        if (result && p_19946_ == instance.level().damageSources().onFire()) {
+    public boolean redirectHurt(Entity instance, DamageSource damageSource, float damage) {
+        var result = instance.hurt(damageSource, damage);
+        if (result && damageSource == instance.level().damageSources().onFire()) {
             var igniteExtraDamage = taczexpands$igniteExtraDamage;
             if (igniteExtraDamage > 0.0f) {
-                instance.hurt(p_19946_, p_19947_ + igniteExtraDamage);
+                instance.hurt(damageSource, damage + igniteExtraDamage);
                 if (remainingFireTicks - 1 <= 0) {
                     taczexpands$igniteExtraDamage = 0.0f;
                 }

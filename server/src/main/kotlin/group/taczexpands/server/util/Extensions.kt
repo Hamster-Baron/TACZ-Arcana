@@ -97,6 +97,7 @@ val YAML = Yaml(
             subclass(Modify::class)
             subclass(Animation::class)
             subclass(ParticleEmitter::class)
+            subclass(ParticleUpdate::class)
             subclass(Summon::class)
             subclass(Effect::class)
             subclass(FlashEmitter::class)
@@ -126,6 +127,7 @@ val YAML = Yaml(
             subclass(SetAttachment::class)
             subclass(SetTexture::class)
             subclass(SetCamera::class)
+            subclass(SetSurfaceCamera::class)
             subclass(NBTEdit::class)
             subclass(Dash::class)
             subclass(SetHUD::class)
@@ -134,6 +136,7 @@ val YAML = Yaml(
     })
 
 fun schedule(skill: Skill, player: ServerPlayer?, time: Int, block: (ScheduledTask) -> Unit, tick: (ScheduledTask) -> Unit) {
+    if (!skill.isActive) return
     if (player != null) {
         if (SkillManager.shouldCancel(player, skill)) return
     }
@@ -141,6 +144,7 @@ fun schedule(skill: Skill, player: ServerPlayer?, time: Int, block: (ScheduledTa
 }
 
 fun schedule(skill: Skill, player: ServerPlayer?, time: Int, block: (ScheduledTask) -> Unit) {
+    if (!skill.isActive) return
     if (player != null) {
         if (SkillManager.shouldCancel(player, skill)) return
     }
@@ -393,35 +397,13 @@ fun LivingEntity.mainHandIsMissileGun(): Boolean {
 }
 
 fun Entity.hasLineOfSight(entity: Entity): Boolean {
-    if (this is LivingEntity)
-        return this.hasLineOfSight(entity)
-    else {
-        if (entity.level() !== this.level()) {
-            return false
-        } else {
-            val vec3 = Vec3(this.getX(), this.getEyeY(), this.getZ())
-            val vec31 = Vec3(entity.getX(), entity.getEyeY(), entity.getZ())
-            if (vec31.distanceTo(vec3) > 128.0) {
-                return false
-            } else {
-                return this.level()
-                    .clip(ClipContext(vec3, vec31, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this))
-                    .getType() == HitResult.Type.MISS
-            }
-        }
-    }
+    if (entity.level() !== level()) return false
+    return hasLineOfSight(entity.eyePosition)
 }
 
 fun Entity.hasLineOfSight(pos: Vec3): Boolean {
-    val vec3 = Vec3(this.getX(), this.getEyeY(), this.getZ())
-    val vec31 = Vec3(pos.x, pos.y, pos.z)
-    if (vec31.distanceTo(vec3) > 128.0) {
-        return false
-    } else {
-        return this.level()
-            .clip(ClipContext(vec3, vec31, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this))
-            .getType() == HitResult.Type.MISS
-    }
+    return level().clip(ClipContext(eyePosition, pos, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this))
+        .type == HitResult.Type.MISS
 }
 
 fun Entity.getHealth(): Float {
@@ -586,7 +568,11 @@ fun String.checkContains(subStr: String, useRegex: Boolean): Boolean {
     if (!useRegex) {
         return this.contains(subStr)
     } else {
-        return subStr.toRegex().matches(this)
+        return try {
+            subStr.toRegex().matches(this)
+        } catch (_: IllegalArgumentException) {
+            false
+        }
     }
 }
 
@@ -595,7 +581,7 @@ fun List<String>.checkContains(subStr: String, useRegex: Boolean): Boolean {
         return this.contains(subStr)
     } else {
         for (str in this) {
-            if (str.checkContains(subStr, true))
+            if (subStr.checkContains(str, true))
                 return true
         }
         return false
@@ -607,7 +593,7 @@ fun Set<String>.checkContains(subStr: String, useRegex: Boolean): Boolean {
         return this.contains(subStr)
     } else {
         for (str in this) {
-            if (str.checkContains(subStr, true))
+            if (subStr.checkContains(str, true))
                 return true
         }
         return false
@@ -625,22 +611,19 @@ fun Vec3.copy(): Vec3 {
 }
 
 fun YamlScalar.infer(): Any {
-    try {
-        return this.toLong()
-    } catch (e: Exception) {
+    return try {
+        this.toLong()
+    } catch (e: YamlScalarFormatException) {
+        null
+    } ?: try {
+        this.toDouble()
+    } catch (e: YamlScalarFormatException) {
+        null
+    } ?: try {
+        this.toBoolean()
+    } catch (e: YamlScalarFormatException) {
+        this.content
     }
-
-    try {
-        return this.toDouble()
-    } catch (e: Exception) {
-    }
-
-    try {
-        return this.toBoolean()
-    } catch (e: Exception) {
-    }
-
-    return this.content
 }
 
 val LOGGER = TACZExpandsServer.LOGGER

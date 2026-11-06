@@ -24,12 +24,12 @@ public abstract class MixinLivingEntity extends Entity implements IAccessorLivin
     @Shadow
     protected boolean jumping;
 
-    public MixinLivingEntity(EntityType<?> p_19870_, Level p_19871_) {
-        super(p_19870_, p_19871_);
+    public MixinLivingEntity(EntityType<?> entityType, Level level) {
+        super(entityType, level);
     }
 
     @Inject(method = "hasLineOfSight", at = @At(value = "RETURN", ordinal = 2), cancellable = true, locals = LocalCapture.CAPTURE_FAILHARD)
-    public void hookHasLineOfSight(Entity p_147185_, CallbackInfoReturnable<Boolean> cir, Vec3 left, Vec3 right) {
+    public void hookHasLineOfSight(Entity entity, CallbackInfoReturnable<Boolean> cir, Vec3 left, Vec3 right) {
         if (taczexpands$isBlind()) {
             cir.setReturnValue(false);
             return;

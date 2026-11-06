@@ -12,15 +12,10 @@ object SignalManager {
             SIGNAL_MAP[signal] = expireTick
         }
 
-        try {
-            ServerLifecycleHooks.getCurrentServer().playerList.players.forEach {
-                (0..it.inventory.containerSize - 1).forEach { index ->
-                    SkillManager.trigger(TriggerType.ON_SIGNAL, SignalContext(it, signal), index)
-                }
+        ServerLifecycleHooks.getCurrentServer().playerList.players.forEach {
+            (0..it.inventory.containerSize - 1).forEach { index ->
+                SkillManager.trigger(TriggerType.ON_SIGNAL, SignalContext(it, signal), index)
             }
-
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 

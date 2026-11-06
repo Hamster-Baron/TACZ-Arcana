@@ -1,5 +1,6 @@
 package group.taczexpands.server.bukkit.mythicmobs
 
+import com.mojang.logging.LogUtils
 import group.taczexpands.server.bukkit.toBukkit
 import io.lumine.mythic.bukkit.BukkitAdapter
 import io.lumine.mythic.bukkit.MythicBukkit
@@ -15,6 +16,7 @@ import java.util.Optional
 import kotlin.jvm.optionals.getOrNull
 
 object MythicMobsForge {
+    private val LOGGER = LogUtils.getLogger()
     private val plugin: Plugin = Bukkit.getPluginManager().getPlugin("MythicMobs") ?: throw NullPointerException("MythicMobs plugin not found.")
     private val classLoader: ClassLoader = plugin::class.java.classLoader
 
@@ -79,9 +81,8 @@ object MythicMobsForge {
             }
 
             executeMethod.invoke(skill, data)
-
         } catch (e: Exception) {
-            e.printStackTrace()
+            LOGGER.error("Failed to execute MythicMobs skill '{}'", skillName, e)
         }
     }
 

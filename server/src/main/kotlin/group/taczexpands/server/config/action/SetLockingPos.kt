@@ -15,6 +15,7 @@ import group.taczexpands.server.expression.ExpressionHelper
 import group.taczexpands.server.util.taczPick
 import group.taczexpands.server.listener.PlayerListener
 import group.taczexpands.server.skill.Skill
+import group.taczexpands.server.util.CameraTraceEvaluation
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import net.minecraft.server.level.ServerPlayer
@@ -75,12 +76,7 @@ data class SetLockingPos(
 
                 if (!extraBulletData.missileData.isMissile) return@forEach
 
-                val result = player.taczPick(extraBulletData.missileData.maxLockingDistance.toDouble(), 1.0f, false)
-                val location = if (result.type != HitResult.Type.MISS) {
-                    result.location
-                } else null
-
-                PlayerListener.getPlayerStates(player).skillLockingPos = location
+                PlayerListener.getPlayerStates(player).skillLockingPos = CameraTraceEvaluation.trace(context, player).location
 
             } else {
                 val x = ExpressionHelper.initExpression(posX!!, context, player).evaluate().numberValue.toDouble()

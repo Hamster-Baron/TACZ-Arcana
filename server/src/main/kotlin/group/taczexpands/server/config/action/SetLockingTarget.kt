@@ -8,7 +8,7 @@ import group.taczexpands.server.config.action.base.SelectorPrepareData
 import group.taczexpands.server.config.create
 import group.taczexpands.server.context.Context
 import group.taczexpands.server.listener.PlayerListener
-import group.taczexpands.server.bullet.MissileManager
+import group.taczexpands.server.bullet.LockingTargetResolver
 import group.taczexpands.server.skill.Skill
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -35,9 +35,9 @@ data class SetLockingTarget(
         data.dataList[0].selector.getTargets(context).forEach { player ->
             if (player !is ServerPlayer) return@forEach
             val lockingTarget = if (fromRawSimpleMode)
-                PlayerListener.getPlayerStates(player).lockingTarget
+                LockingTargetResolver.resolve(player, LockingTargetResolver.Mode.RAW)
             else if (fromSimpleMode)
-                MissileManager.getPlayerLockingTarget(player)
+                LockingTargetResolver.resolve(player, LockingTargetResolver.Mode.SIMPLE)
             else data.dataList[1].selector.getTarget(context)
             PlayerListener.getPlayerStates(player).skillLockingTarget = lockingTarget
         }

@@ -32,6 +32,7 @@ object InputManager {
     var lastYawCopy: Float = 0f
     var lastPitchCopy: Float = 0f
     var lastChargeProgress: Float = 0f
+    private var cameraStateSynchronized = false
 
     fun storeLocal() {
         val player = Minecraft.getInstance().player ?: return
@@ -48,6 +49,7 @@ object InputManager {
             camera.yRot,
             camera.xRot
         )
+        cameraStateSynchronized = false
     }
 
     fun loadLocal() {
@@ -153,11 +155,13 @@ object InputManager {
 
         val input = Vec3(x, y, z)
 
-        if (yaw != lastYaw || pitch != lastPitch || input != lastInput) {
-            NetworkManager.sendToServer(C2SActionKey(C2SActionKey.Action.CAMERA, yaw, pitch, input))
-            lastYaw = yaw
-            lastPitch = pitch
-            lastInput = input
+        if (!cameraStateSynchronized || yaw != lastYaw || pitch != lastPitch || input != lastInput) {
+            if (NetworkManager.sendToServer(C2SActionKey(C2SActionKey.Action.CAMERA, yaw, pitch, input))) {
+                lastYaw = yaw
+                lastPitch = pitch
+                lastInput = input
+                cameraStateSynchronized = true
+            }
         }
     }
 
@@ -169,14 +173,16 @@ object InputManager {
             || (lastChargeProgress <= 0.0f && gunOperator.chargeProgress > 0.0f)
             || (lastChargeProgress > 0.0f && gunOperator.chargeProgress <= 0.0f)
         ) {
-            NetworkManager.sendToServer(C2SActionKey(C2SActionKey.Action.UPDATE_CHARGE, gunOperator.chargeProgress))
-            lastChargeProgress = gunOperator.chargeProgress
+            if (NetworkManager.sendToServer(C2SActionKey(C2SActionKey.Action.UPDATE_CHARGE, gunOperator.chargeProgress))) {
+                lastChargeProgress = gunOperator.chargeProgress
+            }
         }
     }
 
     fun clear() {
         inputData = null
         lastChargeProgress = 0.0f
+        cameraStateSynchronized = false
     }
 }
 

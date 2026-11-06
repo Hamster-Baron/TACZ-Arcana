@@ -11,8 +11,6 @@ import com.tacz.guns.client.resource.pojo.model.BedrockModelPOJO
 import com.tacz.guns.client.resource.pojo.model.BonesItem
 import com.tacz.guns.util.RenderHelper
 import group.taczexpands.client.TACZExpandsClient
-import group.taczexpands.client.compat.CompatHelper.hasIris
-import group.taczexpands.client.compat.iris.IrisCompat.hasShaderPackInUse
 import group.taczexpands.client.mixin.accessor.IAccessorBedrockPart
 import group.taczexpands.client.mixin.accessor.IAccessorBonesItem
 import group.taczexpands.client.mixin.accessor.IAccessorRenderTarget
@@ -22,7 +20,6 @@ import org.joml.Matrix4f
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.GL30
 import java.nio.ByteBuffer
-
 
 object RenderHelper {
     fun drawFullscreenQuad(texture: Int, scale: Float) {
@@ -38,30 +35,6 @@ object RenderHelper {
         GL30.glTexCoord2f(0.0f, 1.0f)
         GL30.glVertex2f(-1.0f * scale, 1.0f * scale)
         GL30.glEnd()
-    }
-
-    fun copyAndScaleFramebuffer(targetFramebuffer: Int, scaleFactor: Int) {
-        val mc = Minecraft.getInstance()
-        val worldFramebuffer = mc.mainRenderTarget.frameBufferId
-
-        val width = mc.window.width
-        val height = mc.window.height
-
-        val scaledWidth = width * scaleFactor
-        val scaledHeight = height * scaleFactor
-
-        val prevFramebufferId = GL30.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING)
-
-        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, targetFramebuffer)
-        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, worldFramebuffer)
-
-        GL30.glBlitFramebuffer(
-            0, 0, width, height,
-            0, 0, scaledWidth, scaledHeight,
-            GL30.GL_COLOR_BUFFER_BIT, GL30.GL_LINEAR
-        )
-
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFramebufferId)
     }
 
     fun createFramebuffer(width: Int, height: Int): Pair<Int, Int> {
@@ -87,36 +60,14 @@ object RenderHelper {
 
         GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, texture, 0)
 
-
         val rbo = GL30.glGenRenderbuffers()
         GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, rbo)
         GL30.glRenderbufferStorage(GL30.GL_RENDERBUFFER, GL30.GL_DEPTH24_STENCIL8, width, height)
         GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_STENCIL_ATTACHMENT, GL30.GL_RENDERBUFFER, rbo)
 
-
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFramebufferId)
 
         return fbo to texture
-    }
-
-    fun copyWorldFramebuffer(targetFramebuffer: Int) {
-        val mc = Minecraft.getInstance()
-        val worldFramebuffer = mc.mainRenderTarget.frameBufferId
-
-        val prevFramebufferId = GL30.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING)
-        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, targetFramebuffer)
-        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, worldFramebuffer)
-
-        val width = mc.window.width
-        val height = mc.window.height
-
-        GL30.glBlitFramebuffer(
-            0, 0, width, height,
-            0, 0, width, height,
-            GL30.GL_COLOR_BUFFER_BIT, GL30.GL_NEAREST
-        )
-
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFramebufferId)
     }
 
     fun copy(from: RenderTarget, to: RenderTarget) {
@@ -127,22 +78,7 @@ object RenderHelper {
         GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0)
     }
 
-    fun copyStencil(from: RenderTarget, to: RenderTarget) {
-        val currentStencilMask = GL30.glGetInteger(GL30.GL_STENCIL_WRITEMASK)
-        val currentReadFbo = GL30.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING)
-        val currentDrawFbo = GL30.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING)
-
-        GlStateManager._stencilMask(0xff)
-        GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, from.frameBufferId)
-        GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, to.frameBufferId)
-
-        GlStateManager._glBlitFrameBuffer(0, 0, from.width, from.height, 0, 0, to.width, to.height, GL30.GL_STENCIL_BUFFER_BIT, GL30.GL_NEAREST)
-        GlStateManager._stencilMask(currentStencilMask)
-        GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, currentReadFbo)
-        GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, currentDrawFbo)
-    }
-
-    fun blitScope(p_83972_: Int, p_83973_: Int, p_83974_: Boolean, target: RenderTarget) {
+    fun blitScope(width: Int, height: Int, disableBlend: Boolean, target: RenderTarget) {
         RenderSystem.assertOnRenderThread()
         val originalDepthFunc = GL11.glGetInteger(GL11.GL_DEPTH_FUNC)
 
@@ -150,14 +86,14 @@ object RenderHelper {
         GlStateManager._enableDepthTest()
         RenderSystem.depthFunc(GL11.GL_ALWAYS)
         GlStateManager._depthMask(true)
-        GlStateManager._viewport(0, 0, p_83972_, p_83973_)
-        if (p_83974_) {
+        GlStateManager._viewport(0, 0, width, height)
+        if (disableBlend) {
             GlStateManager._disableBlend()
         }
 
         val shaderinstance = TACZExpandsClient.getBlitScreenScopeShader()
         shaderinstance.setSampler("DiffuseSampler", target.colorTextureId)
-        val matrix4f = (Matrix4f()).setOrtho(0.0f, p_83972_.toFloat(), p_83973_.toFloat(), 0.0f, 1000.0f, 3000.0f)
+        val matrix4f = (Matrix4f()).setOrtho(0.0f, width.toFloat(), height.toFloat(), 0.0f, 1000.0f, 3000.0f)
         RenderSystem.setProjectionMatrix(matrix4f, VertexSorting.ORTHOGRAPHIC_Z)
         if (shaderinstance.MODEL_VIEW_MATRIX != null) {
             shaderinstance.MODEL_VIEW_MATRIX!!.set((Matrix4f()).translation(0.0f, 0.0f, -2000.0f))
@@ -169,11 +105,7 @@ object RenderHelper {
 
         val (r, g, b) = if (TACZExpandsClient.shouldUseThermalImaging(true)) {
             shaderinstance.safeGetUniform("ThermalImaging").set(1)
-            if (hasIris() && hasShaderPackInUse()) {
-                Triple(255, 65, 130)
-            } else {
-                Triple(65, 65, 130)
-            }
+            Triple(65, 65, 130)
 
         } else if (TACZExpandsClient.shouldUseNightVision(true)) {
             shaderinstance.safeGetUniform("ThermalImaging").set(0)
@@ -187,8 +119,8 @@ object RenderHelper {
         shaderinstance.safeGetUniform("Monochrome").set(if (isMonochrome) 1 else 0)
 
         shaderinstance.apply()
-        val f: Float = p_83972_.toFloat()
-        val f1: Float = p_83973_.toFloat()
+        val f: Float = width.toFloat()
+        val f1: Float = height.toFloat()
         val f2: Float = target.viewWidth.toFloat() / target.width.toFloat()
         val f3: Float = target.viewHeight.toFloat() / target.height.toFloat()
         val tesselator = Tesselator.getInstance()
@@ -206,20 +138,20 @@ object RenderHelper {
         GlStateManager._colorMask(true, true, true, true)
     }
 
-    private fun _blitToScreen(p_83972_: Int, p_83973_: Int, p_83974_: Boolean, target: RenderTarget) {
+    private fun _blitToScreen(width: Int, height: Int, disableBlend: Boolean, target: RenderTarget) {
         RenderSystem.assertOnRenderThread()
         GlStateManager._colorMask(true, true, true, false)
         GlStateManager._enableDepthTest()
         GlStateManager._depthMask(false)
-        GlStateManager._viewport(0, 0, p_83972_, p_83973_)
-        if (p_83974_) {
+        GlStateManager._viewport(0, 0, width, height)
+        if (disableBlend) {
             GlStateManager._disableBlend()
         }
 
         val minecraft = Minecraft.getInstance()
         val shaderinstance = minecraft.gameRenderer.blitShader
         shaderinstance.setSampler("DiffuseSampler", target.colorTextureId)
-        val matrix4f = (Matrix4f()).setOrtho(0.0f, p_83972_.toFloat(), p_83973_.toFloat(), 0.0f, 1000.0f, 3000.0f)
+        val matrix4f = (Matrix4f()).setOrtho(0.0f, width.toFloat(), height.toFloat(), 0.0f, 1000.0f, 3000.0f)
         RenderSystem.setProjectionMatrix(matrix4f, VertexSorting.ORTHOGRAPHIC_Z)
         if (shaderinstance.MODEL_VIEW_MATRIX != null) {
             shaderinstance.MODEL_VIEW_MATRIX!!.set((Matrix4f()).translation(0.0f, 0.0f, -2000.0f))
@@ -230,8 +162,8 @@ object RenderHelper {
         }
 
         shaderinstance.apply()
-        val f = p_83972_.toFloat()
-        val f1 = p_83973_.toFloat()
+        val f = width.toFloat()
+        val f1 = height.toFloat()
         val f2 = target.viewWidth.toFloat() / target.width.toFloat()
         val f3 = target.viewHeight.toFloat() / target.height.toFloat()
         val tesselator = RenderSystem.renderThreadTesselator()
@@ -355,6 +287,5 @@ object RenderHelper {
         if (old == null) return null
         return old.toMutableList()
     }
-
 
 }

@@ -1,20 +1,33 @@
 package group.taczexpands.client.render
 
+import com.mojang.blaze3d.pipeline.RenderTarget
 import com.mojang.blaze3d.pipeline.TextureTarget
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.PoseStack
+import com.mojang.math.Axis
 import com.tacz.guns.client.model.bedrock.BedrockPart
 import com.tacz.guns.init.ModItems
 import group.taczexpands.client.TACZExpandsClient
+import group.taczexpands.client.accessor.IAccessorGameRenderer
+import group.taczexpands.client.compat.RendererCapabilities
+import group.taczexpands.client.compat.iris.IrisTerrainBindings
+import group.taczexpands.client.mixin.accessor.IAccessorCamera
 import group.taczexpands.client.mixin.accessor.IAccessorPostChain
+import group.taczexpands.client.render.flashlight.FlashlightDepthState
+import group.taczexpands.client.render.flashlight.FlashlightDepthTarget
+import group.taczexpands.client.render.flashlight.FlashlightViews
+import group.taczexpands.client.render.surface.SurfaceEngine
+import group.taczexpands.client.render.surface.SurfaceFeed
 import group.taczexpands.client.util.RenderHelper
 import group.taczexpands.common.TACZExpandsCommon
 import group.taczexpands.common.accessor.IAccessorAttachmentData
 import group.taczexpands.common.nbt.GunExtras
 import group.taczexpands.common.util.perspectiveDiv
+import kotlin.math.abs
 import net.minecraft.client.Camera
+import net.minecraft.client.CameraType
 import net.minecraft.client.Minecraft
-import net.minecraft.client.Screenshot
+import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.renderer.PostChain
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.LivingEntity
@@ -25,7 +38,6 @@ import org.joml.Matrix4f
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
-import kotlin.math.abs
 
 class FlashlightData(val isFirstPerson: Boolean, val entity: LivingEntity, val depthRenderTarget: TextureCache, val range: Float, val angle: Float, val luminance: Float, val worldToFlashlightCamera: Matrix4f, val flashlightCameraToClip: Matrix4f, val camera: Camera = Camera()) {
     val firstPersonFlashlightToMainCamera: Matrix4f = Matrix4f()
@@ -34,17 +46,12 @@ class FlashlightData(val isFirstPerson: Boolean, val entity: LivingEntity, val d
     var firstPersonCameraWorldRotation = Vector2f()
 
     fun prepareRenderTarget() {
-        val window = Minecraft.getInstance().window
-        if (depthRenderTarget.textureTarget.width != window.width || depthRenderTarget.textureTarget.height != window.height) {
-            depthRenderTarget.textureTarget.resize(window.width, window.height, Minecraft.ON_OSX)
-        }
         depthRenderTarget.textureTarget.clear(Minecraft.ON_OSX)
     }
 
     fun updateFirstPerson(worldToMainCamera: Matrix4f, mainCameraToClip: Matrix4f) {
 
         val camera = Minecraft.getInstance().gameRenderer.mainCamera
-        val invFirstPersonModelViewMat = Matrix4f(firstPersonFlashlightToMainCamera).invert()
         val mainCameraToWorld = Matrix4f(worldToMainCamera).invert()
         val clipToMainCamera = Matrix4f(mainCameraToClip).invert()
         val posCenterModel = Vector4f(0.0f, 0.0f, 0.0f, 1.0f)
@@ -65,6 +72,21 @@ class FlashlightData(val isFirstPerson: Boolean, val entity: LivingEntity, val d
         firstPersonCameraWorldRotation.set(yaw, pitch)
 
     }
+
+    fun updateCamera(partialTick: Float) {
+        val access = camera as IAccessorCamera
+        val eyeHeight = if (isFirstPerson) 0.0f else entity.eyeHeight
+        access.setEyeHeight(eyeHeight)
+        access.setEyeHeightOld(eyeHeight)
+        camera.setup(entity.level(), entity, false, false, partialTick)
+        if (isFirstPerson) {
+            access.setPosition(Vec3(firstPersonCameraWorldPosition.x.toDouble(),
+                firstPersonCameraWorldPosition.y.toDouble(), firstPersonCameraWorldPosition.z.toDouble()))
+            access.setRotation(firstPersonCameraWorldRotation.x, firstPersonCameraWorldRotation.y)
+        } else {
+            access.move(0.5, 0.0, 0.0)
+        }
+    }
 }
 
 class TextureCache() {
@@ -72,11 +94,45 @@ class TextureCache() {
     val textureTarget: TextureTarget
         get() {
             if (_textureTarget == null)
-                _textureTarget = TextureTarget(Minecraft.getInstance().window.width, Minecraft.getInstance().window.height, true, Minecraft.ON_OSX)
+                _textureTarget = FlashlightDepthTarget(FlashlightDepthTarget.SHADOW_SIZE, FlashlightDepthTarget.SHADOW_SIZE)
             return _textureTarget!!
         }
 
     var occupied = false
+
+    fun release() {
+        _textureTarget?.let {
+            ShaderTextureReferences.clear(it.depthTextureId)
+            it.destroyBuffers()
+        }
+        _textureTarget = null
+        occupied = false
+    }
+}
+
+private fun releaseCompositionChain(chain: PostChain) {
+    val buffer = chain.getTempTarget("swap")
+    ShaderTextureReferences.clear(buffer.colorTextureId)
+    ShaderTextureReferences.clear(buffer.depthTextureId)
+    chain.close()
+}
+
+/** One output-sized composition chain; depth preparation remains owned by the main view. */
+class FlashlightComposition(val target: RenderTarget) : AutoCloseable {
+    val chain: PostChain
+    val depthBackup: TextureTarget = FlashlightDepthTarget.backup(target.width, target.height)
+    init {
+        val mc = Minecraft.getInstance()
+        chain = PostChain(mc.textureManager, mc.resourceManager, target,
+            ResourceLocation(TACZExpandsCommon.MODID, "shaders/post/flashlight.json"))
+        chain.resize(target.width, target.height)
+    }
+    override fun close() {
+        releaseCompositionChain(chain)
+        ShaderTextureReferences.clear(depthBackup.colorTextureId)
+        ShaderTextureReferences.clear(depthBackup.depthTextureId)
+        depthBackup.destroyBuffers()
+    }
 }
 
 object Flashlight {
@@ -86,11 +142,26 @@ object Flashlight {
 
     var firstPersonFlashlightData: FlashlightData? = null
     val flashlights = mutableListOf<FlashlightData>()
+    private var prepared: List<FlashlightData> = emptyList()
+    private var preparedLevel: ClientLevel? = null
+    private var preparedFrame = -1L
+    private var frameViews: FlashlightViews? = null
+    private val frameProjection = Matrix4f()
+    private val previousLens = Matrix4f()
+    private val previousView = Matrix4f()
+    private var previousViewReady = false
+    private val mainProjection = Matrix4f()
+    private val mainView = Matrix4f()
+    private var mainViewReady = false
+    private var candidateLevel: ClientLevel? = null
+    private var candidateTick = -1L
+    private var candidates: List<LivingEntity> = emptyList()
     val firstPersonDepthCache by lazy { TextureCache().also { it.occupied = true } }
     val depthCache by lazy { List<TextureCache>(8) { TextureCache() } }
-    val mainDepthBackup by lazy {
-        TextureTarget(Minecraft.getInstance().window.width, Minecraft.getInstance().window.height, true, Minecraft.ON_OSX)
-    }
+    private var backup: TextureTarget? = null
+    val mainDepthBackup: TextureTarget
+        get() = backup ?: FlashlightDepthTarget.backup(Minecraft.getInstance().window.width,
+            Minecraft.getInstance().window.height).also { backup = it }
 
     fun init() {
         val mc = Minecraft.getInstance()
@@ -102,15 +173,25 @@ object Flashlight {
     }
 
     fun reset() {
+        postChain?.let(::releaseCompositionChain)
         postChain = null
         firstPersonFlashlightData = null
         flashlights.clear()
-    }
-
-    fun getRenderTarget(): TextureCache? {
-        val result = depthCache.firstOrNull { !it.occupied } ?: return null
-        result.occupied = true
-        return result
+        prepared = emptyList()
+        preparedLevel = null
+        preparedFrame = -1L
+        frameViews = null
+        previousViewReady = false
+        mainViewReady = false
+        candidateLevel = null
+        candidates = emptyList()
+        firstPersonDepthCache.release()
+        depthCache.forEach { it.release() }
+        backup?.let {
+            ShaderTextureReferences.clear(it.depthTextureId)
+            it.destroyBuffers()
+        }
+        backup = null
     }
 
     fun afterRender() {
@@ -119,7 +200,6 @@ object Flashlight {
             return@removeIf true
         }
     }
-
 
     fun add(entity: LivingEntity) {
         if (entity == Minecraft.getInstance().player && Minecraft.getInstance().options.cameraType.isFirstPerson) {
@@ -131,27 +211,84 @@ object Flashlight {
         if (mainHand.item != gunItem) return
         if (GunExtras.getFlashlight(mainHand)) {
             val data = IAccessorAttachmentData.getFlashlight(mainHand)
-            if (data != null && data.enable && GunExtras.getFlashlight(mainHand)) {
-                val buffer = getRenderTarget() ?: return
-                flashlights.add(FlashlightData(false, entity, buffer, data.range, data.angle, data.luminance, Matrix4f(), Matrix4f()))
+            if (data != null && data.enable) {
+                val buffer = depthCache.firstOrNull { !it.occupied } ?: return
+                val light = FlashlightData(false, entity, buffer, data.range, data.angle, data.luminance, Matrix4f(), Matrix4f())
+                light.updateCamera(Minecraft.getInstance().partialTick)
+                if (frameViews?.affects(light) != true) return
+                buffer.occupied = true
+                flashlights.add(light)
             }
         }
     }
 
-
     fun onRenderLevel(partialTicks: Float, modelViewStack: PoseStack) {
+        if (!TACZExpandsClient.patchMainTargetDraw) {
+            mainProjection.set(RenderSystem.getProjectionMatrix())
+            mainView.set(modelViewStack.last().pose())
+            mainViewReady = true
+        }
+        if (!hasPreparedLights()) return
+        val mc = Minecraft.getInstance()
+        if (postChain == null) init()
+        val chain = postChain ?: return
+        if (width != mc.window.width || height != mc.window.height) {
+            chain.resize(mc.window.width, mc.window.height)
+            width = mc.window.width
+            height = mc.window.height
+        }
+        composite(partialTicks, modelViewStack, mc.mainRenderTarget, chain, mainDepthBackup)
+    }
 
+    fun beginFrame(partialTick: Float, feeds: List<SurfaceFeed>) {
+        val mc = Minecraft.getInstance()
+        val level = mc.level ?: return
+        val entity = mc.cameraEntity ?: return
+        if (preparedLevel !== level) {
+            previousViewReady = false
+            mainViewReady = false
+        }
+        // Pair the preceding main view's effects with its recorded hand locator.
+        val lensEffects = if (previousViewReady && mainViewReady)
+            Matrix4f(previousLens).invert().mul(mainProjection) else Matrix4f()
+        val viewEffects = if (previousViewReady && mainViewReady)
+            Matrix4f(mainView).mul(Matrix4f(previousView).invert()) else Matrix4f()
+        val camera = mc.gameRenderer.mainCamera
+        camera.setup(level, entity, !mc.options.cameraType.isFirstPerson,
+            mc.options.cameraType == CameraType.THIRD_PERSON_FRONT, partialTick)
+        val pose = PoseStack()
+        pose.mulPose(Axis.XP.rotationDegrees(camera.xRot))
+        pose.mulPose(Axis.YP.rotationDegrees(camera.yRot + 180))
+        val fov = (mc.gameRenderer as IAccessorGameRenderer).`taczexpands$getFOV`(camera, partialTick, true)
+        previousLens.set(mc.gameRenderer.getProjectionMatrix(fov))
+        previousView.set(pose.last().pose())
+        previousViewReady = true
+        frameProjection.set(previousLens).mul(lensEffects)
+        pose.last().pose().set(viewEffects.mul(previousView))
+        if (RendererCapabilities.current().terrainBindings() && IrisTerrainBindings.cameraUnavailableReason() != null) {
+            preparedLevel = level
+            prepared = emptyList()
+            return
+        }
+        frameViews = FlashlightViews(camera, frameProjection, pose.last().pose(), feeds)
+        prepare(pose)
+    }
+
+    fun prepare(modelViewStack: PoseStack) {
+        val mc = Minecraft.getInstance()
+        if (preparedFrame == SurfaceEngine.frame() && preparedLevel === mc.level) return
+        preparedFrame = SurfaceEngine.frame()
+        preparedLevel = mc.level
+        afterRender()
+        prepared = emptyList()
 
         val player = Minecraft.getInstance().player ?: return
 
         val cameraEntity = Minecraft.getInstance().cameraEntity
-        val valid = if (cameraEntity != null && cameraEntity is LivingEntity) {
-            val data = IAccessorAttachmentData.getFlashlight(cameraEntity.mainHandItem)
-            if (data != null && data.enable && GunExtras.getFlashlight(cameraEntity.mainHandItem)) {
-                if (Minecraft.getInstance().options.cameraType.isFirstPerson) {
-                    true
-                } else false
-            } else false
+        val valid = if (cameraEntity is LivingEntity) {
+            val data = if (GunExtras.getFlashlight(cameraEntity.mainHandItem))
+                IAccessorAttachmentData.getFlashlight(cameraEntity.mainHandItem) else null
+            data != null && data.enable && mc.options.cameraType.isFirstPerson
         } else false
 
         if (!valid) {
@@ -160,44 +297,41 @@ object Flashlight {
 
         val firstPerson = firstPersonFlashlightData
 
-        if (firstPerson == null) {
-            add(player)
+        val level = mc.level ?: return
+        if (candidateLevel !== level || candidateTick != level.gameTime) {
+            candidateLevel = level
+            candidateTick = level.gameTime
+            candidates = level.getEntitiesOfClass(LivingEntity::class.java, player.boundingBox.inflate(128.0)) {
+                it.mainHandItem.item == ModItems.MODERN_KINETIC_GUN.get() && GunExtras.getFlashlight(it.mainHandItem)
+            }
         }
-        val nearby = player.level().getEntities(player, player.boundingBox.inflate(128.0)) { it is LivingEntity }.sortedBy { player.distanceToSqr(it) }
-        nearby.forEach { if (it is LivingEntity) add(it) }
-
-        if (postChain == null) init()
-        val postChain = postChain ?: return
-        val window = Minecraft.getInstance().window
-        if (window.width != width || window.height != height) {
-            postChain.resize(window.width, window.height)
-            width = window.width
-            height = window.height
+        if (candidates.isNotEmpty()) {
+            candidates.sortedBy { mc.gameRenderer.mainCamera.position.distanceToSqr(it.position()) }.forEach(::add)
         }
-
-        val mainCamera = Minecraft.getInstance().gameRenderer.mainCamera
-        val mainCameraToClip = RenderSystem.getProjectionMatrix()
-        val worldToMainCamera = Matrix4f(modelViewStack.last().pose()).mul(RenderSystem.getModelViewMatrix())
-
-
-        val clipToMainCamera = Matrix4f(mainCameraToClip).invert()
-        val mainCameraToWorld = Matrix4f(worldToMainCamera).invert()
-
-
         val data = if (firstPerson != null) {
-            firstPerson.updateFirstPerson(worldToMainCamera, mainCameraToClip)
-            flashlights + firstPerson
+            firstPerson.updateFirstPerson(modelViewStack.last().pose(), frameProjection)
+            firstPerson.updateCamera(mc.partialTick)
+            if (frameViews?.affects(firstPerson) == true) flashlights + firstPerson else flashlights
         } else flashlights
 
         for (flashlight in data) {
             Depth.call(flashlight)
         }
+        prepared = data.toList()
+    }
+
+    fun hasPreparedLights(): Boolean = prepared.isNotEmpty() && preparedLevel === Minecraft.getInstance().level
+
+    fun composite(partialTicks: Float, modelViewStack: PoseStack, output: RenderTarget,
+                  postChain: PostChain, depthBackup: TextureTarget) {
+        if (!hasPreparedLights()) return
+        val mainCamera = Minecraft.getInstance().gameRenderer.mainCamera
+        val worldToMainCamera = Matrix4f(modelViewStack.last().pose()).mul(RenderSystem.getModelViewMatrix())
+        val clipToMainCamera = Matrix4f(RenderSystem.getProjectionMatrix()).invert()
+        val mainCameraToWorld = Matrix4f(worldToMainCamera).invert()
+        val data = prepared
         for (index in data.indices) {
             val flashlight = data[index]
-            val hasNext = index + 1 < flashlights.size
-            if (Depth.outputScreenshot) {
-                Screenshot.grab(Minecraft.getInstance().gameDirectory, flashlight.depthRenderTarget.textureTarget) {}
-            }
 
             val worldToFlashlightCamera = flashlight.worldToFlashlightCamera
             val flashlightCameraToClip = flashlight.flashlightCameraToClip
@@ -213,18 +347,14 @@ object Flashlight {
             from.sub(mainCamera.position.x.toFloat(), mainCamera.position.y.toFloat(), mainCamera.position.z.toFloat(), 0.0f)
             from.mul(worldToMainCamera)
 
-
-
             val to = Vector4f(0.0f, 0.0f, nearZ - flashlight.range, 1.0f).mul(flashlightCameraToWorld)
             to.add(flashlight.camera.position.x.toFloat(), flashlight.camera.position.y.toFloat(), flashlight.camera.position.z.toFloat(), 0.0f)
             to.sub(mainCamera.position.x.toFloat(), mainCamera.position.y.toFloat(), mainCamera.position.z.toFloat(), 0.0f)
             to.mul(worldToMainCamera)
 
-
-            val target = postChain.getTempTarget("flashlight")
-            RenderHelper.fitStencil(flashlight.depthRenderTarget.textureTarget, target)
-            target.copyDepthFrom(flashlight.depthRenderTarget.textureTarget)
+            val depthSource = flashlight.depthRenderTarget.textureTarget
             for (pass in (postChain as IAccessorPostChain).passes) {
+                pass.effect.setSampler("FlashlightDepthSampler") { depthSource.depthTextureId }
                 pass.getEffect().safeGetUniform("InvProjMat").set(clipToMainCamera)
                 pass.getEffect().safeGetUniform("InvModelViewMat").set(Matrix4f(RenderSystem.getModelViewMatrix()).invert())
                 pass.getEffect().safeGetUniform("MainCameraToWorldMat").set(mainCameraToWorld)
@@ -235,7 +365,8 @@ object Flashlight {
                     .set(Vector3f(mainCamera.position.x.toFloat() - flashlight.camera.position.x.toFloat(),
                         mainCamera.position.y.toFloat() - flashlight.camera.position.y.toFloat(),
                         mainCamera.position.z.toFloat() - flashlight.camera.position.z.toFloat()))
-                pass.getEffect().safeGetUniform("ShadowPixelStep").set(1.0f / target.width.toFloat(), 1.0f / target.height.toFloat())
+                pass.getEffect().safeGetUniform("ShadowPixelStep").set(
+                    1.0f / depthSource.width, 1.0f / depthSource.height)
                 pass.getEffect().safeGetUniform("From").set(Vector3f(from.x, from.y, from.z))
                 pass.getEffect().safeGetUniform("To").set(Vector3f(to.x, to.y, to.z))
                 pass.getEffect().safeGetUniform("Angle").set(Math.toRadians(flashlight.angle.toDouble()).toFloat())
@@ -244,27 +375,19 @@ object Flashlight {
                 pass.getEffect().safeGetUniform("MinZ").set(0.0f)
             }
 
-
-            val window = Minecraft.getInstance().window
-            if (mainDepthBackup.width != window.width || mainDepthBackup.height != window.height) {
-                mainDepthBackup.resize(window.width, window.height, Minecraft.ON_OSX)
+            if (depthBackup.width != output.width || depthBackup.height != output.height) {
+                depthBackup.resize(output.width, output.height, Minecraft.ON_OSX)
             }
-
-            mainDepthBackup.clear(Minecraft.ON_OSX)
-            RenderHelper.fitStencil(mainDepthBackup, Minecraft.getInstance().mainRenderTarget)
-            mainDepthBackup.copyDepthFrom(Minecraft.getInstance().mainRenderTarget)
-            Minecraft.getInstance().mainRenderTarget.bindWrite(false)
-            Minecraft.getInstance().mainRenderTarget.bindRead()
-
+            depthBackup.clear(Minecraft.ON_OSX)
+            RenderHelper.fitStencil(depthBackup, output)
+            depthBackup.copyDepthFrom(output)
+            output.bindWrite(true)
+            output.bindRead()
             postChain.process(partialTicks)
-
-            Minecraft.getInstance().mainRenderTarget.copyDepthFrom(mainDepthBackup)
-
-            Minecraft.getInstance().mainRenderTarget.bindWrite(false)
-            Minecraft.getInstance().mainRenderTarget.bindRead()
+            output.copyDepthFrom(depthBackup)
+            output.bindWrite(true)
+            output.bindRead()
         }
-        Depth.outputScreenshot = false
-        afterRender()
 
     }
 
@@ -292,7 +415,7 @@ object Flashlight {
                     Matrix4f(),
                     Matrix4f()).also {
                     it.firstPersonFlashlightToMainCamera.set(pose).also { it.mul(RenderSystem.getModelViewMatrix()) }
-                    it.firstPersonMainCameraToClip.set(RenderSystem.getProjectionMatrix())
+                    it.firstPersonMainCameraToClip.set(FlashlightDepthState.handProjection())
                 }
             }
         }

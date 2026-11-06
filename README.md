@@ -18,6 +18,8 @@ The Comprehensive Develop Kits for Timeless and Classics Guns : Zero.
 
 ## Notice / 须知
 
+- This source tracks Arcana **1.4.2**, Forge **1.20.1**, with the TacZ **1.2.0 release** attachment-rendering compatibility fix.
+- 当前源码为 Arcana **1.4.2 / Forge 1.20.1**，使用 TacZ **1.2.0 正式版**。
 - The public source version and its direct builds do not include the ability to load protected gunpacks and skill packs.
 - 公开源码版本及其直接构建版本不具备加载封装拓展资源包（Gunpack）与封装技能包（Expansion）的能力。
 - Therefore, the open-source build may be unable to properly load some public gunpacks and may lack certain functionality.
@@ -30,6 +32,8 @@ The Comprehensive Develop Kits for Timeless and Classics Guns : Zero.
 ## Documentation / 文档
 
 For full documentation, please visit the Wiki: **[Arcana Official Wiki](https://hamsterbaron.gitbook.io/hamsterbaron)**
+
+- [Arcana 1.4.2 Release / 更新日志](https://github.com/Hamster-Baron/TACZ-Arcana/releases/tag/1.4.2-loader-hybrid)
 
 - The Wiki includes installation instructions, feature documentation, gunpack development references, compatibility information, and known limitations.For skill component development and condition block definitions, please also refer to:
 - Wiki 中包含安装说明、功能文档、Gunpack 开发参考、兼容性信息与已知限制。如需开发技能组件或编写条件块，请同时参考：
@@ -44,19 +48,17 @@ config/taczexpands/skills/example.yaml
 
 ## Build / 构建
 
+Requires JDK 17.
+
+需要 JDK 17。
+
 ```powershell
-.\gradlew.bat :zHybrid:build
+.\gradlew.bat buildHybridJar
 ```
 
-TacZ is resolved from Curse Maven by default: (1.1.8-hotfix) 
+The build downloads TacZ 1.2.0 and writes `build/libs/Arcana-1.4.2-loader-hybrid.jar`.
 
-```text
-curse.maven:timeless-and-classics-zero-1028108:8141310
-```
-
-Other compile-time mod dependencies are resolved from Modrinth Maven, Maven Central, and JitPack.
-
-其他编译期模组依赖会从 Modrinth Maven、Maven Central 与 JitPack 解析。
+构建会自动下载 TacZ 1.2.0，产物位于 `build/libs/Arcana-1.4.2-loader-hybrid.jar`。
 
 
 ## Credits / 致谢

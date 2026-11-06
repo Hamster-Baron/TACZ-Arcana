@@ -1,18 +1,18 @@
 package group.taczexpands.server.mixin;
 
-import com.tacz.guns.api.entity.IGunOperator;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.tacz.guns.api.item.gun.AbstractGunItem;
 import com.tacz.guns.api.item.gun.FireMode;
 import com.tacz.guns.entity.EntityKineticBullet;
 import com.tacz.guns.item.ModernKineticGunScriptAPI;
 import com.tacz.guns.resource.pojo.data.gun.BulletData;
-import com.tacz.guns.resource.pojo.data.gun.GunData;
 import com.tacz.guns.util.CycleTaskHelper;
 import group.taczexpands.common.accessor.IAccessorGunData;
 import group.taczexpands.common.nbt.GunExtras;
 import group.taczexpands.server.context.Context;
 import group.taczexpands.server.event.BulletSpawnEvent;
-import group.taczexpands.server.override.CycleTaskHelperOverride;
+import group.taczexpands.server.scheduler.CycleTaskScheduler;
 import group.taczexpands.server.skill.SkillManager;
 import group.taczexpands.server.skill.TriggerType;
 import net.minecraft.server.level.ServerPlayer;
@@ -41,9 +41,9 @@ public class MixinModernKineticGunScriptAPI {
     @Shadow
     private LivingEntity shooter;
 
-    @Redirect(method = "lambda$shootOnce$2", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z", remap = true))
-    public boolean onBulletSpawn(Level instance, Entity entity) {
-        var result = instance.addFreshEntity(entity);
+    @WrapOperation(method = "lambda$shootOnce$2", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z", remap = true))
+    public boolean onBulletSpawn(Level instance, Entity entity, Operation<Boolean> original) {
+        var result = original.call(instance, entity);
         if (entity instanceof EntityKineticBullet bullet) {
             MinecraftForge.EVENT_BUS.post(new BulletSpawnEvent(bullet));
         }
@@ -64,7 +64,7 @@ public class MixinModernKineticGunScriptAPI {
         }
 
         SkillManager.INSTANCE.trigger(TriggerType.ON_BURST_SHOOT, new Context((ServerPlayer) this.shooter), 0);
-        CycleTaskHelperOverride.addCycleTask(task, periodMs, cycles, () -> {
+        CycleTaskScheduler.addCycleTask(task, periodMs, cycles, () -> {
             SkillManager.INSTANCE.triggerReverse(TriggerType.ON_BURST_SHOOT, new Context((ServerPlayer) this.shooter), 0);
         });
     }
@@ -79,7 +79,7 @@ public class MixinModernKineticGunScriptAPI {
     }
 
     @Inject(method = "lambda$shootOnce$2", at = @At("HEAD"), cancellable = true)
-    public void preShootOnce(boolean consumeAmmo, GunData gunData, int bulletAmount, BulletData bulletData, IGunOperator gunOperator, float shotDamageMultiplier, float processedSpeed, float inaccuracy, int soundDistance, boolean useSilenceSound, CallbackInfoReturnable<Boolean> cir) {
+    public void preShootOnce(CallbackInfoReturnable<Boolean> cir) {
         var extra = IAccessorGunData.getExtraHolder(itemStack);
         if (extra == null) return;
         if (extra.durability <= 0) return;
@@ -90,7 +90,7 @@ public class MixinModernKineticGunScriptAPI {
     }
 
     @Inject(method = "lambda$shootOnce$2", at = @At("TAIL"), cancellable = true)
-    public void postShootOnce(boolean consumeAmmo, GunData gunData, int bulletAmount, BulletData bulletData, IGunOperator gunOperator, float shotDamageMultiplier, float processedSpeed, float inaccuracy, int soundDistance, boolean useSilenceSound, CallbackInfoReturnable<Boolean> cir) {
+    public void postShootOnce(CallbackInfoReturnable<Boolean> cir) {
         var extra = IAccessorGunData.getExtraHolder(itemStack);
         if (extra == null) return;
         if (extra.durability <= 0) return;

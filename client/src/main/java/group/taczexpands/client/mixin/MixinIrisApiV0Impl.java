@@ -23,12 +23,9 @@ public class MixinIrisApiV0Impl implements IAccessorIrisApiV0Impl {
     }
 
     @Override
-    public void taczexpands$setHookUsingShaderPack() {
-        taczexpands$hook = true;
-    }
-
-    @Override
-    public void taczexpands$unSetHookUsingShaderPack() {
-        taczexpands$hook = false;
+    public boolean taczexpands$setHookUsingShaderPack(boolean hook) {
+        boolean previous = taczexpands$hook;
+        taczexpands$hook = hook;
+        return previous;
     }
 }

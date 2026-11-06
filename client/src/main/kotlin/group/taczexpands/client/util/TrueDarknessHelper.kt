@@ -1,6 +1,9 @@
 package group.taczexpands.client.util
 
+import group.taczexpands.common.TACZExpandsCommon.Companion.LOGGER
 import java.lang.reflect.Field
+import java.lang.reflect.InaccessibleObjectException
+import java.lang.reflect.Modifier
 import java.util.concurrent.ConcurrentHashMap
 
 object TrueDarknessHelper {
@@ -78,21 +81,14 @@ object TrueDarknessHelper {
 
     private fun getBooleanField(className: String, fieldName: String): Boolean? {
         return when (val result = getCachedField(className, fieldName)) {
-            is FieldResult.Success -> try {
-                result.field.getBoolean(null)
-            } catch (e: Exception) {
-                null
-            }
+            is FieldResult.Success -> result.field.getBoolean(null)
             FieldResult.NotFound -> null
         }
     }
 
     private fun setBooleanField(className: String, fieldName: String, value: Boolean) {
         when (val result = getCachedField(className, fieldName)) {
-            is FieldResult.Success -> try {
-                result.field.setBoolean(null, value)
-            } catch (e: Exception) {
-            }
+            is FieldResult.Success -> result.field.setBoolean(null, value)
             FieldResult.NotFound -> {}
         }
     }
@@ -102,9 +98,22 @@ object TrueDarknessHelper {
         return fieldCache.getOrPut(key) {
             try {
                 val clazz = Class.forName(className)
-                val field = clazz.getDeclaredField(fieldName).apply { isAccessible = true }
-                FieldResult.Success(field)
-            } catch (e: Exception) {
+                val field = clazz.getDeclaredField(fieldName)
+                if (field.type != Boolean::class.javaPrimitiveType || Modifier.isFinal(field.modifiers) || !Modifier.isStatic(field.modifiers)) {
+                    LOGGER.warn("True Darkness field {}#{} must be a mutable static boolean", className, fieldName)
+                    FieldResult.NotFound
+                } else {
+                    field.isAccessible = true
+                    FieldResult.Success(field)
+                }
+            } catch (e: ClassNotFoundException) {
+                LOGGER.debug("True Darkness class '{}' is unavailable", className, e)
+                FieldResult.NotFound
+            } catch (e: ReflectiveOperationException) {
+                LOGGER.warn("Failed to resolve True Darkness field {}#{}", className, fieldName, e)
+                FieldResult.NotFound
+            } catch (e: InaccessibleObjectException) {
+                LOGGER.warn("True Darkness field {}#{} is inaccessible", className, fieldName, e)
                 FieldResult.NotFound
             }
         }

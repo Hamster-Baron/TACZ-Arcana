@@ -1,10 +1,15 @@
 package group.taczexpands.client.mixin;
 
+import com.tacz.guns.api.client.other.KeepingItemRenderer;
+import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.event.CameraSetupEvent;
 import com.tacz.guns.resource.pojo.data.gun.GunRecoil;
 import com.tacz.guns.resource.pojo.data.gun.InaccuracyType;
 import group.taczexpands.client.TACZExpandsClient;
 import group.taczexpands.client.config.ClientConfig;
+import group.taczexpands.client.render.scope.ScopeVisibility;
+import group.taczexpands.common.accessor.IAccessorAttachmentData;
+import group.taczexpands.common.data.AttachmentExtraHolder;
 import group.taczexpands.common.nbt.GunExtras;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -54,9 +59,24 @@ public class MixinCameraSetupEvent {
 
     @Inject(method = "applyScopeMagnification", at = @At("HEAD"), cancellable = true)
     private static void applyScopeMagnification(ViewportEvent.ComputeFov event, CallbackInfo ci) {
-        if (TACZExpandsClient.Companion.isAdvancedRendering() && !TACZExpandsClient.Companion.getPatchMainTargetDraw())
+        if (TACZExpandsClient.Companion.isAdvancedRendering() && !TACZExpandsClient.Companion.getPatchMainTargetDraw()) {
+            ScopeVisibility.updateClosedFov(event);
             ci.cancel();
+        }
     }
 
 
+    @Inject(method = "applyGunModelFovModifying", at = @At("HEAD"), cancellable = true, require = 1, remap = false)
+    private static void taczexpands$defaultFovControl(ViewportEvent.ComputeFov event, CallbackInfo ci) {
+        if (event.usedConfiguredFov() || !(event.getCamera().getEntity() instanceof LocalPlayer)
+                || !ClientConfig.INSTANCE.shouldSkipDefaultModelFov()) {
+            return;
+        }
+        AttachmentExtraHolder extra = IAccessorAttachmentData.getExtraHolder(
+                KeepingItemRenderer.getRenderer().getCurrentItem(), AttachmentType.SCOPE);
+        if (extra != null && extra.advancedRendering == null) {
+            event.setFOV(CameraSetupEvent.ITEM_MODEL_FOV_DYNAMICS.update((float) event.getFOV()));
+            ci.cancel();
+        }
+    }
 }

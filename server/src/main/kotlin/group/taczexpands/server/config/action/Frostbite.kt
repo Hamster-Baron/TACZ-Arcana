@@ -1,7 +1,7 @@
 package group.taczexpands.server.config.action
 
 import group.taczexpands.common.network.s2c.S2CAction
-import group.taczexpands.common.network.s2c.S2CCancelAction
+import group.taczexpands.common.network.v2.s2c.S2CActionLockState
 import group.taczexpands.server.config.SelectorData
 import group.taczexpands.server.config.action.base.Action
 import group.taczexpands.server.config.action.base.PrepareData
@@ -40,11 +40,11 @@ data class Frostbite(
             if (target !is ServerPlayer) return@forEach
             val identifier = UUID.randomUUID().toString()
             if (cancelWalk)
-                ActionManager.cancelAction(target, S2CCancelAction.Action.Walk, time, identifier)
+                ActionManager.cancelAction(target, S2CActionLockState.Action.Walk, time, identifier)
             if (cancelJump)
-                ActionManager.cancelAction(target, S2CCancelAction.Action.Jump, time, identifier)
+                ActionManager.cancelAction(target, S2CActionLockState.Action.Jump, time, identifier)
             if (cancelRotation)
-                ActionManager.cancelAction(target, S2CCancelAction.Action.Rotate, time, identifier)
+                ActionManager.cancelAction(target, S2CActionLockState.Action.Rotate, time, identifier)
             if (showOverlay)
                 NetworkManager.sendToPlayer(S2CAction(S2CAction.Action.Frostbite, time), target)
         }

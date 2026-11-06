@@ -61,4 +61,9 @@ public class GunExtraHolder {
     @Nullable
     @SerializedName("aim_shake")
     public AimShake aimShake = null;
+
+    @SerializedName("jump_spread_modifier")
+    public float jumpSpreadModifier = 1.0f;
+    @SerializedName("jamming_entities")
+    public List<String> jammingEntities;
 }

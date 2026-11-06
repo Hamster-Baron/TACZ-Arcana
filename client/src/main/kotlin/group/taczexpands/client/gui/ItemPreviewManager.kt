@@ -1,5 +1,6 @@
 package group.taczexpands.client.gui
 
+import com.google.gson.JsonParseException
 import com.mojang.blaze3d.platform.GlStateManager
 import com.mojang.blaze3d.platform.Lighting
 import com.mojang.blaze3d.systems.RenderSystem
@@ -9,7 +10,6 @@ import com.tacz.guns.api.TimelessAPI
 import com.tacz.guns.api.item.IAmmo
 import com.tacz.guns.api.item.IGun
 import com.tacz.guns.client.gui.GunSmithTableScreen
-import com.tacz.guns.util.RenderDistance
 import group.taczexpands.common.TACZExpandsCommon
 import group.taczexpands.common.accessor.IAccessorPreview
 import net.minecraft.client.Minecraft
@@ -150,7 +150,7 @@ object ItemPreviewManager {
 
         val component = try {
             Component.Serializer.fromJson(rawText)
-        } catch (e: Exception) {
+        } catch (e: JsonParseException) {
             null
         }
 
@@ -164,7 +164,8 @@ object ItemPreviewManager {
 
 
     private fun renderLeftModel(poseStack: PoseStack, stack: ItemStack, leftPos: Int, topPos: Int, scale: Float, offset: FloatArray) {
-        RenderDistance.markGuiRenderTimestamp()
+        // TacZ brackets screen rendering at HIGHEST/LOWEST event priority.
+        // This NORMAL-priority preview already runs inside ScreenItemVboContext.
 
         val rotationPeriod = 8f
         val xPos: Int = leftPos + 60

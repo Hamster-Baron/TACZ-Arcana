@@ -81,7 +81,10 @@ enum class TriggerType(val reversible: Boolean, val subTypes: List<TriggerType>?
     ON_SHIELD_DISABLED(false),
 
 
-    ON_CHARGE(true)
+    ON_CHARGE(true),
+
+    /** Server-side ammo selection request, before the ordinary reload guard. */
+    REQUEST_CHANGE_AMMO(false)
 
 
 

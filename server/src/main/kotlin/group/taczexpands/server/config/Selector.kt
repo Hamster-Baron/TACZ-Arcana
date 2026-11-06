@@ -1,6 +1,7 @@
 package group.taczexpands.server.config
 
 import com.mojang.brigadier.StringReader
+import group.taczexpands.server.bullet.LockingTargetResolver
 import group.taczexpands.server.context.BulletContext
 import group.taczexpands.server.context.Context
 import group.taczexpands.server.context.HitBlockContext
@@ -14,6 +15,7 @@ import group.taczexpands.server.util.findTargetInLineOfSight
 import group.taczexpands.server.util.getCenterPosition
 import group.taczexpands.server.util.getEntitiesInConeFromEyes
 import group.taczexpands.server.util.hasLineOfSight
+import group.taczexpands.server.util.canSee
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import net.minecraft.commands.arguments.selector.EntitySelectorParser
@@ -57,7 +59,7 @@ class SelectorInstance(val data: SelectorData) {
         if (cachedList != null) return cachedList!!
 
         if (data.cacheOnGet) {
-            cachedList = getTargets(context)
+            cachedList = internalGetTargets(context)
             return cachedList!!
         }
 
@@ -67,6 +69,13 @@ class SelectorInstance(val data: SelectorData) {
     private fun internalGetTargets(context: Context): List<Entity> {
 
         val sourceEntity = source?.getTarget(context) ?: context.self
+        val requireSameTeam = parseArg(context, "isSameTeam") == "true"
+        val sourceTeam = sourceEntity.team
+        fun matchesTeam(target: Entity): Boolean {
+            if (!requireSameTeam) return true
+            val targetTeam = target.team
+            return sourceTeam != null && sourceTeam == targetTeam || sourceTeam == null && targetTeam == null
+        }
         when (data.name) {
             SelectorType.NULL -> {
                 return listOf()
@@ -78,7 +87,7 @@ class SelectorInstance(val data: SelectorData) {
 
             SelectorType.RAW_TARGET -> {
                 val target = context.target ?: return emptyList()
-                return listOf(target)
+                return listOf(target).filter(::matchesTeam)
             }
 
             SelectorType.ENTITY -> {
@@ -102,6 +111,7 @@ class SelectorInstance(val data: SelectorData) {
                     )
                 }
                     .filter { type == "all" || type == "living" && it is LivingEntity || type == "player" && it is ServerPlayer }
+                    .filter(::matchesTeam)
                     .let { if (limit != null) it.take(limit) else it }
 
                 return result
@@ -117,6 +127,7 @@ class SelectorInstance(val data: SelectorData) {
                     return (listOf(sourceEntity) + BulletExtraData.get(bullet).hitEntities.filter { if (explosionOnly) it.value else true }.keys
                         .mapNotNull { it.hurtEntity }
                         .filter { type == "all" || type == "living" && it is LivingEntity || type == "player" && it is ServerPlayer })
+                        .filter(::matchesTeam)
                         .let { if (limit != null) it.take(limit) else it }
                 } else
 
@@ -125,11 +136,13 @@ class SelectorInstance(val data: SelectorData) {
                         return (listOf(context.target!!) + BulletExtraData.get(bullet).hitEntities.filter { if (explosionOnly) it.value else true }.keys
                             .mapNotNull { it.hurtEntity }
                             .filter { type == "all" || type == "living" && it is LivingEntity || type == "player" && it is ServerPlayer })
+                            .filter(::matchesTeam)
                             .let { if (limit != null) it.take(limit) else it }
                     } else if (context is HitBlockContext || context is BulletContext) {
                         return BulletExtraData.get(context.bullet!!).hitEntities.filter { if (explosionOnly) it.value else true }.keys
                             .mapNotNull { it.hurtEntity }
                             .filter { type == "all" || type == "living" && it is LivingEntity || type == "player" && it is ServerPlayer }
+                            .filter(::matchesTeam)
                             .let { if (limit != null) it.take(limit) else it }
                     } else return emptyList()
             }
@@ -155,7 +168,7 @@ class SelectorInstance(val data: SelectorData) {
                         bullet.level().getEntities(bullet, AABB(minX, minY, minZ, maxX, maxY, maxZ))
                             .mapNotNull { it }.filter {
                                 it.hasLineOfSight(bulletPos)
-                            }.filter { type == "all" || type == "living" && it is LivingEntity || type == "player" && it is ServerPlayer }.let {
+                            }.filter { type == "all" || type == "living" && it is LivingEntity || type == "player" && it is ServerPlayer }.filter(::matchesTeam).let {
                                 if (limit != null) it.take(limit) else it
                             }
                     } else {
@@ -165,6 +178,7 @@ class SelectorInstance(val data: SelectorData) {
                                 .mapNotNull { it.hurtEntity }
                                 .filter { type == "all" || type == "living" && it is LivingEntity || type == "player" && it is ServerPlayer }
                                 .filter { it.distanceToSqr(bulletPos) <= radius * radius }
+                                .filter(::matchesTeam)
 
                         if (tempList.size >= at) {
                             tempList.let {
@@ -194,7 +208,7 @@ class SelectorInstance(val data: SelectorData) {
                         it.hasLineOfSight(bulletPos)
                     }.filter {
                         type == "all" || type == "living" && it is LivingEntity || type == "player" && it is ServerPlayer
-                    }.let {
+                    }.filter(::matchesTeam).let {
                         if (limit != null) it.take(limit) else it
                     }
 
@@ -207,16 +221,19 @@ class SelectorInstance(val data: SelectorData) {
                 val fov = parseArg(context, "fov")?.toDoubleOrNull() ?: 45.0
                 val maxDistance = parseArg(context, "maxDistance")?.toDoubleOrNull() ?: ServerConfig.rayTraceDistance.get().toDouble()
 
+                if (!maxDistance.isFinite() || maxDistance <= 0.0) return emptyList()
+                if (!fov.isFinite() || fov <= 0.0 || fov > 180.0) return emptyList()
+
                 val ray = data.parameters["ray"] ?: "line"
 
                 if (ray == "line") {
-                    val target = findTargetInLineOfSight(sourceEntity, maxDistance) ?: return emptyList()
+                    val target = findTargetInLineOfSight(sourceEntity, maxDistance) { matchesTeam(it) } ?: return emptyList()
                     return listOf(target)
                 } else if (ray == "cone") {
                     val entities = getEntitiesInConeFromEyes(sourceEntity, maxDistance, fov)
-                        .filter { sourceEntity.hasLineOfSight(it) }
+                        .filter { sourceEntity.canSee(it, maxDistance) }
 
-                    return entities.filter { type == "all" || it is ServerPlayer }.let {
+                    return entities.filter { type == "all" || it is ServerPlayer }.filter(::matchesTeam).let {
                         if (limit != null) it.take(limit) else it
                     }
                 } else return emptyList()
@@ -244,6 +261,7 @@ class SelectorInstance(val data: SelectorData) {
                     .mapNotNull { it }
                     .filter { type == "all" || type == "living" && it is LivingEntity || type == "player" && it is ServerPlayer }
                     .filter { frustum.isInFrustum(it.getCenterPosition()) && it.hasLineOfSight(pos) }
+                    .filter(::matchesTeam)
                     .let {
                         if (limit != null) it.take(limit) else it
                     }
@@ -256,7 +274,18 @@ class SelectorInstance(val data: SelectorData) {
 
                 return vanillaSelector.findEntities(
                     sourceEntity.createCommandSourceStack().withPermission(4).withSource(ServerLifecycleHooks.getCurrentServer())
-                )
+                ).filter(::matchesTeam)
+            }
+
+            SelectorType.LOCKING_TARGET -> {
+                val player = sourceEntity as? ServerPlayer ?: return emptyList()
+                val mode = LockingTargetResolver.Mode.fromParameter(parseArg(context, "mode") ?: LockingTargetResolver.Mode.EFFECTIVE.parameterValue) ?: return emptyList()
+                val requireAiming = when (parseArg(context, "requireAiming")) {
+                    "true" -> true
+                    "false" -> false
+                    else -> mode.defaultRequireAiming
+                }
+                return listOfNotNull(LockingTargetResolver.resolve(player, mode, requireAiming)).filter(::matchesTeam)
             }
         }
     }
@@ -292,7 +321,10 @@ enum class SelectorType {
     VANILLA,
 
     @SerialName("null")
-    NULL
+    NULL,
+
+    @SerialName("locking_target")
+    LOCKING_TARGET
 
 }
 

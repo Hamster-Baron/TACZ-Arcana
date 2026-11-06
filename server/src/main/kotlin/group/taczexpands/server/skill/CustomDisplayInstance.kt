@@ -6,6 +6,7 @@ import group.taczexpands.server.config.SelectorData
 import group.taczexpands.server.config.SelectorInstance
 import group.taczexpands.server.config.action.ChainAction
 import group.taczexpands.server.config.action.Sound
+import group.taczexpands.server.config.action.base.performAction
 import group.taczexpands.server.config.create
 import group.taczexpands.server.context.Context
 import group.taczexpands.server.expression.ExpressionHelper
@@ -140,7 +141,7 @@ class CustomDisplayInstance(
                 return ExpressionHelper.initExpression(expressionStr, context, target, null, ::processExpression)
                     .evaluate().numberValue.toDouble()
             } catch (e: Exception) {
-                e.printStackTrace()
+                skill.reportExecutionError(e)
             }
         }
         return default
@@ -152,7 +153,7 @@ class CustomDisplayInstance(
                 return ExpressionHelper.initExpression(expressionStr, context, target, null, ::processExpression)
                     .evaluate().numberValue.toFloat()
             } catch (e: Exception) {
-                e.printStackTrace()
+                skill.reportExecutionError(e)
             }
         }
         return default
@@ -182,7 +183,7 @@ class CustomDisplayInstance(
         entity.moveTo(xPos, yPos, zPos, yawValue, pitchValue)
 
         if(ambientSound != null && entity.tickCount % ambientSoundInterval == 0) {
-            ambientSound.perform(skill, context)
+            ambientSound.performAction(skill, context)
         }
     }
 
@@ -191,7 +192,7 @@ class CustomDisplayInstance(
     fun onDeath() {
         if (!triggeredOnDeath) {
             triggeredOnDeath = true
-            onDeath?.perform(skill, context)
+            onDeath?.performAction(skill, context)
         }
     }
 }

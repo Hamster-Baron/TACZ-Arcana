@@ -82,8 +82,8 @@ public abstract class MixinEntityKineticBullet extends Projectile implements IEn
     @Shadow
     protected abstract void onBulletTick();
 
-    protected MixinEntityKineticBullet(EntityType<? extends Projectile> p_37248_, Level p_37249_) {
-        super(p_37248_, p_37249_);
+    protected MixinEntityKineticBullet(EntityType<? extends Projectile> entityType, Level level) {
+        super(entityType, level);
     }
 
     @Inject(method = "writeSpawnData", at = @At("TAIL"), remap = false)
@@ -202,6 +202,13 @@ public abstract class MixinEntityKineticBullet extends Projectile implements IEn
             double nextX = this.getX() + movement.x;
             double nextY = this.getY() + movement.y;
             double nextZ = this.getZ() + movement.z;
+
+            Vec3 endpoint = this.taczexpands$getDecayEndpoint();
+            if (endpoint != null) {
+                nextX = endpoint.x;
+                nextY = endpoint.y;
+                nextZ = endpoint.z;
+            }
 
             this.moveTo(nextX, nextY, nextZ, newYaw, newPitch);
 

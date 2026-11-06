@@ -21,13 +21,13 @@ public class MixinGunPackLoader {
         GetJarResources.copyModDirectory(clazz, path, resourcePath, srcPath);
         PreLoadConfig.INSTANCE.load(FMLPaths.CONFIGDIR.get());
         if (srcPath.equals("tacz_default_gun") && PreLoadConfig.INSTANCE.getEnableDefaultStateMachineReplacement().get()) {
+            var filePath = resourcePath.resolve("tacz_default_gun/assets/tacz/scripts/default_state_machine.lua");
             try {
                 try (var newFileResource = TACZExpandsClient.class.getResourceAsStream("/assets/taczexpands/custom/tacz_default_gun/assets/tacz/scripts/default_state_machine.lua")) {
-                    var filePath = resourcePath.resolve("tacz_default_gun/assets/tacz/scripts/default_state_machine.lua");
                     Files.write(filePath, newFileResource.readAllBytes(), StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE);
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                TACZExpandsClient.Companion.getLOGGER().error("Failed to replace default state machine at {}", filePath, e);
             }
         }
     }

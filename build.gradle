@@ -10,7 +10,29 @@ plugins {
 
 group = "group.taczexpands"
 version = readVersion()
-ext.tacz_dependency = findProperty("tacz_dependency") ?: "curse.maven:timeless-and-classics-zero-1028108:8141310"
+ext.tacz_dependency = "curse.maven:timeless-and-classics-zero-1028108:9454481"
+ext.taczMinimumVersion = "1.2.0"
+ext.taczModelLibrary = "simplebedrockmodel-2.6.2-forge-mc1.20.1.jar"
+
+configurations {
+    taczCompileInput
+}
+
+repositories {
+    maven {
+        name = "Curse Maven"
+        url = "https://cursemaven.com"
+        content { includeGroup "curse.maven" }
+    }
+}
+
+dependencies {
+    taczCompileInput tacz_dependency
+}
+
+ext.taczJar = providers.provider {
+    configurations.taczCompileInput.singleFile
+}
 
 subprojects {
     apply plugin: "java"
@@ -128,8 +150,8 @@ tasks.register("buildAll", DefaultTask) {
 
 
 tasks.register("buildClientJar", Jar) {
-    dependsOn project(":loader").tasks.named("jar")
-    dependsOn project(":client").tasks.named("jar")
+    dependsOn project(":loader").tasks.named("reobfJar")
+    dependsOn project(":client").tasks.named("reobfJar")
 
     archiveFileName = "${mod_id}-${version}-loader-client.jar"
     destinationDirectory = layout.buildDirectory.dir("libs")
@@ -143,8 +165,8 @@ tasks.register("buildClientJar", Jar) {
 }
 
 tasks.register("buildServerJar", Jar) {
-    dependsOn project(":loader").tasks.named("jar")
-    dependsOn project(":server").tasks.named("jarJar")
+    dependsOn project(":loader").tasks.named("reobfJar")
+    dependsOn project(":server").tasks.named("reobfJarJar")
 
     archiveFileName = "${mod_id}-${version}-loader-server.jar"
     destinationDirectory = layout.buildDirectory.dir("libs")
@@ -158,10 +180,10 @@ tasks.register("buildServerJar", Jar) {
 }
 
 tasks.register("buildHybridJar", Jar) {
-    dependsOn project(":loader").tasks.named("jar")
-    dependsOn project(":zHybrid").tasks.named("jar")
+    dependsOn project(":loader").tasks.named("reobfJar")
+    dependsOn project(":zHybrid").tasks.named("reobfJar")
 
-    archiveFileName = "${mod_id}-${version}-loader-hybrid.jar"
+    archiveFileName = "Arcana-${version}-loader-hybrid.jar"
     destinationDirectory = layout.buildDirectory.dir("libs")
 
     from zipTree(getJarFile(project(":loader"), "jar"))
@@ -208,9 +230,8 @@ tasks.jar {
 
 
 allprojects {
-    tasks.configureEach {
-        if (it.name.toLowerCase().contains("compile")) {
-            it.outputs.upToDateWhen { false }
-        }
+    tasks.withType(AbstractArchiveTask).configureEach {
+        preserveFileTimestamps = false
+        reproducibleFileOrder = true
     }
 }

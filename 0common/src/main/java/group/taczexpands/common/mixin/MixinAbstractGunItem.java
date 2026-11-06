@@ -9,6 +9,7 @@ import com.tacz.guns.api.item.gun.AbstractGunItem;
 import com.tacz.guns.inventory.tooltip.GunTooltip;
 import com.tacz.guns.resource.index.CommonGunIndex;
 import com.tacz.guns.resource.pojo.data.gun.GunData;
+import com.tacz.guns.util.DefaultGunAttachments;
 import group.taczexpands.common.accessor.IAccessorGunData;
 import group.taczexpands.common.accessor.IAccessorMiscPOJO;
 import group.taczexpands.common.manager.PackAllowAttachmentsModifyManager;
@@ -42,12 +43,12 @@ public abstract class MixinAbstractGunItem extends Item {
     @Unique
     private ResourceLocation taczexpands$hookAmmoId = null;
 
-    @Inject(method = "lambda$dropAllAmmo$3", at = @At(value = "INVOKE_ASSIGN", target = "Lcom/tacz/guns/resource/pojo/data/gun/GunData;getAmmoId()Lnet/minecraft/resources/ResourceLocation;"), locals = LocalCapture.CAPTURE_FAILHARD)
+    @Inject(method = "lambda$dropAllAmmo$4", at = @At(value = "INVOKE_ASSIGN", target = "Lcom/tacz/guns/resource/pojo/data/gun/GunData;getAmmoId()Lnet/minecraft/resources/ResourceLocation;"), locals = LocalCapture.CAPTURE_FAILHARD)
     public void hookDropAllAmmo(ItemStack gunItem, int ammoCount, Player player, CommonGunIndex index, CallbackInfo ci) {
         taczexpands$hookAmmoId = IAccessorGunData.getCurrentAmmoId(index.getGunData(), gunItem);
     }
 
-    @ModifyVariable(method = "lambda$dropAllAmmo$3", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/api/TimelessAPI;getCommonAmmoIndex(Lnet/minecraft/resources/ResourceLocation;)Ljava/util/Optional;"))
+    @ModifyVariable(method = "lambda$dropAllAmmo$4", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/api/TimelessAPI;getCommonAmmoIndex(Lnet/minecraft/resources/ResourceLocation;)Ljava/util/Optional;"))
     private ResourceLocation getCommonAmmoId(ResourceLocation ammoId) {
         if (taczexpands$hookAmmoId != null) {
             ResourceLocation id = taczexpands$hookAmmoId;
@@ -72,7 +73,7 @@ public abstract class MixinAbstractGunItem extends Item {
         cir.setReturnValue(Optional.empty());
     }
 
-    @Redirect(method = "allowAttachment", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/api/item/IGun;getGunId(Lnet/minecraft/world/item/ItemStack;)Lnet/minecraft/resources/ResourceLocation;"))
+    @Redirect(method = "allowAttachment", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/api/item/IGun;getGunId(Lnet/minecraft/world/item/ItemStack;)Lnet/minecraft/resources/ResourceLocation;"), require = 0)
     public ResourceLocation hookAllowAttachmentGetGunId(IGun instance, ItemStack itemStack) {
         return GunExtras.INSTANCE.getGunId(itemStack);
     }
@@ -90,7 +91,7 @@ public abstract class MixinAbstractGunItem extends Item {
         taczexpands$gun = gun;
     }
 
-    @Redirect(method = "lambda$allowAttachmentType$4", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/resource/pojo/data/gun/GunData;getAllowAttachments()Ljava/util/List;"))
+    @Redirect(method = "lambda$allowAttachmentType$5", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/resource/pojo/data/gun/GunData;getAllowAttachments()Ljava/util/List;"))
     private static @Nullable List<AttachmentType> taczexpands$allowAttachmentType$redirect(GunData instance) {
         var original = instance.getAllowAttachments();
         var iGun = IGun.getIGunOrNull(taczexpands$gun);
@@ -112,7 +113,8 @@ public abstract class MixinAbstractGunItem extends Item {
                         if (!finalAllowAttachments.contains(attachmentType)) {
                             finalAllowAttachments.add(attachmentType);
                         }
-                    } catch (Exception e) {
+                    } catch (IllegalArgumentException unknownType) {
+                        return;
                     }
                 });
             }
@@ -121,7 +123,7 @@ public abstract class MixinAbstractGunItem extends Item {
         return original;
     }
 
-    @Inject(method = "lambda$fillItemCategory$5", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "lambda$fillItemCategory$6", at = @At("HEAD"), cancellable = true)
     private static void rewriteFillCondition(GunTabType type, NonNullList<ItemStack> stacks, Map.Entry<ResourceLocation, CommonGunIndex> entry, CallbackInfo ci) {
         ci.cancel();
 
@@ -146,6 +148,7 @@ public abstract class MixinAbstractGunItem extends Item {
                     .setHeatData(gunData.hasHeatData())
                     .setAmmoInBarrel(true)
                     .setCount(1)
+                    .putAllVirtualAttachment(DefaultGunAttachments.defaults(entry.getKey()))
                     .build();
             stacks.add(itemStack);
         }

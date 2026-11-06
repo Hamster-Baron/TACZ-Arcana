@@ -1,5 +1,6 @@
 package group.taczexpands.server.config
 
+import group.taczexpands.server.skill.SkillManager
 import group.taczexpands.server.util.YAML
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -20,7 +21,7 @@ data class VolatileVariablesConfig(val variables: MutableList<String> = mutableL
                 val new = YAML.decodeFromString<VolatileVariablesConfig>(String(data, Charsets.UTF_8))
                 GLOBAL_VOLATILE_VARIABLES.variables.addAll(new.variables)
             } catch (e: Exception) {
-                e.printStackTrace()
+                SkillManager.reportCurrentSourceError("volatile_variables.yml", e)
             }
         }
     }

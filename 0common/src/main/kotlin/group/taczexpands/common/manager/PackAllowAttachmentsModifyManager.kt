@@ -3,6 +3,7 @@ package group.taczexpands.common.manager
 import com.google.common.collect.Maps
 import com.google.gson.reflect.TypeToken
 import com.tacz.guns.resource.CommonAssetsManager
+import group.taczexpands.common.TACZExpandsCommon.Companion.LOGGER
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.Resource
 import net.minecraft.server.packs.resources.ResourceManager
@@ -17,19 +18,18 @@ object PackAllowAttachmentsModifyManager : SimplePreparableReloadListener<Map<St
         val output: MutableMap<String, Map<ResourceLocation, List<String>>> = Maps.newHashMap()
 
         for (namespaces in manager.getNamespaces()) {
-            manager.getResource(ResourceLocation(namespaces, PACK_ALLOW_ATTACHMENTS_NAME)).ifPresent { rl: Resource ->
-                try {
+            try {
+                manager.getResource(ResourceLocation(namespaces, PACK_ALLOW_ATTACHMENTS_NAME)).ifPresent { rl: Resource ->
                     rl.openAsReader().use { reader ->
                         val packAllowAttachments = GsonHelper.fromJson(
                             CommonAssetsManager.GSON, reader,
                             object : TypeToken<Map<ResourceLocation, List<String>>>() {}
                         )
-                        val packAllowAttachments1 = output.put(namespaces, packAllowAttachments)
-                        check(packAllowAttachments1 == null) { "Duplicate data file ignored with namespace $namespaces" }
+                        output[namespaces] = packAllowAttachments
                     }
-                } catch (e: Exception) {
                 }
-
+            } catch (e: Exception) {
+                LOGGER.error("Failed to load '{}' in namespace '{}'", PACK_ALLOW_ATTACHMENTS_NAME, namespaces, e)
             }
         }
         return output

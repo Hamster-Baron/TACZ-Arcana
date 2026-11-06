@@ -3,11 +3,16 @@ package group.taczexpands.common.mixin;
 import com.google.gson.annotations.SerializedName;
 import com.tacz.guns.resource.pojo.AmmoIndexPOJO;
 import group.taczexpands.common.accessor.IAccessorPreview;
+import group.taczexpands.common.accessor.IAccessorAmmoIndexPOJO;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
 @Mixin(value = AmmoIndexPOJO.class, remap = false)
-public class MixinAmmoIndexPOJO implements IAccessorPreview {
+public class MixinAmmoIndexPOJO implements IAccessorPreview, IAccessorAmmoIndexPOJO {
+    @Unique
+    @SerializedName("hidden")
+    private boolean taczexpands$hidden = false;
+
     @Unique
     @SerializedName("preview")
     private boolean taczexpands$preview = false;
@@ -35,6 +40,11 @@ public class MixinAmmoIndexPOJO implements IAccessorPreview {
     @Unique
     @SerializedName("preview_detail")
     private String taczexpands$previewDetail;
+
+    @Override
+    public boolean taczexpands$isHidden() {
+        return taczexpands$hidden;
+    }
 
     @Override
     public boolean taczexpands$shouldPreview() {

@@ -2,12 +2,15 @@ package group.taczexpands.server.config.action
 
 import group.taczexpands.server.config.action.base.Action
 import group.taczexpands.server.config.action.base.PrepareData
+import group.taczexpands.server.config.action.base.performAction
 import group.taczexpands.server.context.Context
 import group.taczexpands.server.skill.Skill
+import group.taczexpands.server.skill.DefinitionScope
 import group.taczexpands.server.skill.SkillManager
 import group.taczexpands.server.util.schedule
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 @SerialName("Chain")
@@ -22,22 +25,17 @@ data class ChainAction(
         val EXAMPLE = ChainAction(listOf())
     }
 
+    @Transient
+    private val definitionScope = DefinitionScope.current
+
     override fun execute(skill: Skill, context: Context, data: PrepareData) {
         val runBlock = {
             actions?.forEach {
-                try {
-                    it.perform(skill, context)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+                it.performAction(skill, context)
             }
             if (from != null) {
-                SkillManager.LOADED_CHAIN_ACTIONS[from]?.actions?.forEach {
-                    try {
-                        it.perform(skill, context)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+                SkillManager.resolveChainAction(from, definitionScope)?.actions?.forEach {
+                    it.performAction(skill, context)
                 }
             }
         }

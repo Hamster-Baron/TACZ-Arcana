@@ -1,7 +1,6 @@
 {
   "targets": [
-    "swap",
-    "flashlight"
+    "swap"
   ],
   "passes": [
     {
@@ -12,10 +11,6 @@
         {
           "name": "DiffuseDepthSampler",
           "id": "minecraft:main:depth"
-        },
-        {
-          "name": "FlashlightDepthSampler",
-          "id": "flashlight:depth"
         }
       ]
     },

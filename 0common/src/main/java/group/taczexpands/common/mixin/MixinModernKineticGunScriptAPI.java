@@ -30,13 +30,13 @@ public class MixinModernKineticGunScriptAPI {
     @ModifyArg(method = "lambda$shootOnce$2", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/api/item/gun/AbstractGunItem;doBulletSpread(Lcom/tacz/guns/entity/shooter/ShooterDataHolder;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/entity/projectile/Projectile;IFFFF)V"), index = 6)
     public float modifySpread(float value) {
         var inaccuracyType = InaccuracyType.getInaccuracyType(shooter);
-        Float modifier = GunExtras.INSTANCE.getSpreadModifier(shooter, shooter.getMainHandItem(), inaccuracyType);
+        float modifier = GunExtras.INSTANCE.getSpreadModifier(shooter, itemStack, inaccuracyType);
 
-        if (modifier != null) {
-            return value * modifier;
+        if (!shooter.onGround() && !shooter.isSwimming() && !shooter.isFallFlying() && !shooter.isPassenger() && !shooter.onClimbable()) {
+            modifier *= GunExtras.INSTANCE.getJumpSpreadModifier(shooter, itemStack);
         }
 
-        return value;
+        return value * modifier;
     }
 
     @Redirect(method = "lambda$shootOnce$2", at = @At(value = "INVOKE", target = "Lcom/tacz/guns/resource/pojo/data/gun/GunData;getAmmoId()Lnet/minecraft/resources/ResourceLocation;"))
@@ -208,6 +208,51 @@ public class MixinModernKineticGunScriptAPI {
                 delegate.invoke(shooter);
             }
         }
+    }
+
+    @Unique
+    public int getWindowWidth() {
+        if (shooter.level().isClientSide) {
+            var delegate = GunScriptAPICommon.INSTANCE.getWindowWidthClientDelegate();
+            if (delegate != null) return delegate.invoke();
+        }
+        return 0;
+    }
+
+    @Unique
+    public int getWindowHeight() {
+        if (shooter.level().isClientSide) {
+            var delegate = GunScriptAPICommon.INSTANCE.getWindowHeightClientDelegate();
+            if (delegate != null) return delegate.invoke();
+        }
+        return 0;
+    }
+
+    @Unique
+    public int getGuiScaledWidth() {
+        if (shooter.level().isClientSide) {
+            var delegate = GunScriptAPICommon.INSTANCE.getGuiScaledWidthClientDelegate();
+            if (delegate != null) return delegate.invoke();
+        }
+        return 0;
+    }
+
+    @Unique
+    public int getGuiScaledHeight() {
+        if (shooter.level().isClientSide) {
+            var delegate = GunScriptAPICommon.INSTANCE.getGuiScaledHeightClientDelegate();
+            if (delegate != null) return delegate.invoke();
+        }
+        return 0;
+    }
+
+    @Unique
+    public double getGuiScale() {
+        if (shooter.level().isClientSide) {
+            var delegate = GunScriptAPICommon.INSTANCE.getGuiScaleClientDelegate();
+            if (delegate != null) return delegate.invoke();
+        }
+        return 0.0;
     }
 
 

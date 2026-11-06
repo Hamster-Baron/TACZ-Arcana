@@ -28,7 +28,7 @@ class C2SRaw(
         }
 
         @JvmStatic
-        fun getDecoder(): java.util.function.Function<FriendlyByteBuf, C2SRaw> {
+        fun getDecoder(): Function<FriendlyByteBuf, C2SRaw> {
             return Function(::decode)
         }
     }

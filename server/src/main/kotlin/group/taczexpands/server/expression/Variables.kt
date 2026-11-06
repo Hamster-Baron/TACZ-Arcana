@@ -13,7 +13,7 @@ import com.tacz.guns.util.AttachmentDataUtils
 import group.taczexpands.common.accessor.IAccessorBulletData
 import group.taczexpands.common.accessor.IAccessorGunData
 import group.taczexpands.common.nbt.*
-import group.taczexpands.server.accessor.IAccessorBullet
+import group.taczexpands.server.accessor.IAccessorServerBullet
 import group.taczexpands.server.accessor.IAccessorHitVec
 import group.taczexpands.server.bullet.MissileManager
 import group.taczexpands.server.config.ServerConfig
@@ -33,6 +33,7 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraftforge.server.ServerLifecycleHooks
+import java.lang.reflect.Array as ReflectArray
 import java.lang.reflect.Field
 import kotlin.jvm.optionals.getOrNull
 
@@ -87,7 +88,7 @@ object Variables {
                     else -> {
                         val tryIndex = current.toIntOrNull()
                         if (tryIndex != null && tryIndex >= 0) {
-                            obj = java.lang.reflect.Array.get(obj, tryIndex)
+                            obj = ReflectArray.get(obj, tryIndex)
                             continue
                         }
 
@@ -567,6 +568,16 @@ object Variables {
             }
         }
 
+        object : Variable<Float>("JumpSpreadModifier") {
+            override fun get(context: Context, target: Entity?): Float {
+                val gunItem = ModItems.MODERN_KINETIC_GUN.get()
+                target as LivingEntity
+                val mainHand = target.mainHandItem
+                if (mainHand.item != gunItem) return -1.0f
+                return GunExtras.getJumpSpreadModifier(target, mainHand)
+            }
+        }
+
         object : Variable<Float>("ReloadTimeModifier") {
             override fun get(context: Context, target: Entity?): Float {
                 val gunItem = ModItems.MODERN_KINETIC_GUN.get()
@@ -684,6 +695,26 @@ object Variables {
             }
         }
 
+        object : Variable<Array<Double>>("CameraLockingPos") {
+            override fun get(context: Context, target: Entity?): Array<Double> {
+                val location = CameraTraceEvaluation.trace(context, target).location ?: return arrayOf()
+                return arrayOf(location.x, location.y, location.z)
+            }
+        }
+
+        object : Variable<Array<Int>>("CameraLockingBlockPos") {
+            override fun get(context: Context, target: Entity?): Array<Int> {
+                val blockPos = CameraTraceEvaluation.trace(context, target).blockPos ?: return arrayOf()
+                return arrayOf(blockPos.x, blockPos.y, blockPos.z)
+            }
+        }
+
+        object : Variable<Float>("CameraLockingDistance") {
+            override fun get(context: Context, target: Entity?): Float {
+                return CameraTraceEvaluation.trace(context, target).distance?.toFloat() ?: -1.0f
+            }
+        }
+
         object : Variable<String>("AimBlockID") {
             override fun get(context: Context, target: Entity?): String {
                 val result = target!!.taczPick(ServerConfig.rayTraceDistance.get().toDouble(), 1.0f, false)
@@ -697,7 +728,7 @@ object Variables {
             override fun get(context: Context, target: Entity?): Boolean {
                 val bullet = context.bullet ?: throw Exception("no bullet")
 
-                return (bullet as IAccessorBullet).`taczexpands$isGenerated`()
+                return (bullet as IAccessorServerBullet).`taczexpands$isGenerated`()
             }
         }
 
@@ -736,7 +767,7 @@ object Variables {
             override fun get(context: Context, target: Entity?): Boolean {
                 val bullet = context.bullet ?: throw Exception("no bullet")
 
-                val bulletData = (bullet as? IAccessorBullet)?.`taczexpands$getBulletExtraData`()?.bulletData ?: return false
+                val bulletData = (bullet as? IAccessorServerBullet)?.`taczexpands$getBulletExtraData`()?.bulletData ?: return false
                 if (IAccessorBulletData.getBulletExtraHolder(bulletData).missileData.isMissile) return true
                 return false
             }
@@ -946,7 +977,7 @@ object Variables {
             override fun get(context: Context, target: Entity?): Int {
                 val bullet = context.bullet ?: throw Exception("no bullet")
 
-                val extraData = (bullet as? IAccessorBullet)?.`taczexpands$getBulletExtraData`()
+                val extraData = (bullet as? IAccessorServerBullet)?.`taczexpands$getBulletExtraData`()
 
                 val bulletData = extraData?.bulletData ?: return -1
                 val bulletExtra = IAccessorBulletData.getBulletExtraHolder(bulletData)
@@ -1025,5 +1056,8 @@ object Variables {
                 return context.signal ?: "null"
             }
         }
+
+        RequestedAmmoIdVariable()
+        BulletAmmoIdVariable()
     }
 }

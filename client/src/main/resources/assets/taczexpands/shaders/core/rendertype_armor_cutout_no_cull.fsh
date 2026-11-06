@@ -22,6 +22,7 @@ void main() {
     if (color.a < 0.1) {
         discard;
     }
+    // fragColor = linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
     float gray = dot(color.rgb, vec3(0.3, 0.59, 0.11));
     fragColor = mix(vec4(gray, gray, gray, color.a), vec4(1.0, 0.2, 0.0, 1.0), 0.7);
     fragColor.r = 1.0;

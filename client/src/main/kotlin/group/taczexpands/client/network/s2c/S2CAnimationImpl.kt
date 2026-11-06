@@ -41,27 +41,19 @@ object S2CAnimationImpl {
 
                             val track = extraTracks[packet.track]
 
-                            try {
-                                stateContext.runAnimation(
-                                    packet.name,
-                                    track,
-                                    packet.blending,
-                                    packet.playMode,
-                                    packet.transitionTime
-                                )
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
+                            stateContext.runAnimation(
+                                packet.name,
+                                track,
+                                packet.blending,
+                                packet.playMode,
+                                packet.transitionTime
+                            )
                         }
                     } else if (packet.action == S2CAnimation.Action.STOP) {
                         val extraTracks = (stateContext as IAccessorAnimationStateContext).`taczexpands$getExtraTracks`()
                         if (packet.track in 0 until extraTracks.size) {
                             val track = extraTracks[packet.track]
-                            try {
-                                stateContext.stopAnimation(track)
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
+                            stateContext.stopAnimation(track)
                         }
                     }
                 }

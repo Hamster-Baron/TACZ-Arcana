@@ -7,6 +7,7 @@ import com.tacz.guns.network.NetworkHandler;
 import com.tacz.guns.network.message.ClientMessagePlayerAim;
 import group.taczexpands.client.config.RuntimeConfig;
 import group.taczexpands.client.input.KeyInputs;
+import group.taczexpands.client.network.NetworkManager;
 import group.taczexpands.common.accessor.IAccessorGunData;
 import net.minecraft.client.player.LocalPlayer;
 import org.spongepowered.asm.mixin.Final;
@@ -41,7 +42,9 @@ public class MixinLocalPlayerAim {
         var shouldBlock = (gunExtra.blockAimWhileReloading != null && gunExtra.blockAimWhileReloading) || (gunExtra.blockAimWhileReloading == null && RuntimeConfig.INSTANCE.getDefaultBlockAimWhileReloading());
         if (shouldBlock && gunOperator.getSynReloadState().getStateType().isReloading() && data.clientIsAiming) {
             data.clientIsAiming = false;
-            NetworkHandler.CHANNEL.sendToServer(new ClientMessagePlayerAim(false));
+            if (NetworkManager.INSTANCE.canSendPlayPacket()) {
+                NetworkHandler.CHANNEL.sendToServer(new ClientMessagePlayerAim(false));
+            }
         }
     }
 }

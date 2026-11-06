@@ -12,9 +12,10 @@ import group.taczexpands.common.accessor.IAccessorBulletData
 import group.taczexpands.common.accessor.IAccessorGunData
 import group.taczexpands.common.nbt.GunExtras
 import group.taczexpands.common.network.s2c.S2CAction
-import group.taczexpands.common.network.s2c.S2CCancelAction
+import group.taczexpands.common.network.v2.s2c.S2CActionLockState
 import group.taczexpands.common.network.v2.s2c.S2CConfig
-import group.taczexpands.server.accessor.IAccessorBullet
+import group.taczexpands.server.TACZExpandsServer
+import group.taczexpands.server.accessor.IAccessorServerBullet
 import group.taczexpands.server.accessor.IAccessorLivingEntity
 import group.taczexpands.server.bullet.CameraData
 import group.taczexpands.server.bullet.MissileManager
@@ -35,8 +36,13 @@ import group.taczexpands.server.skill.GLOBAL_COOLDOWN_GROUP_MAP
 import group.taczexpands.server.skill.SkillManager
 import group.taczexpands.server.skill.TriggerType
 import group.taczexpands.server.util.GunManager
+import group.taczexpands.server.util.CameraPathSession
+import group.taczexpands.server.util.CameraViewStateManager
+import group.taczexpands.server.bullet.LockingTargetResolver
+import group.taczexpands.server.util.PlayerViewState
 import group.taczexpands.server.util.equalsLore
 import group.taczexpands.server.util.getCenterPosition
+import group.taczexpands.server.util.handleEvent
 import net.minecraft.core.Holder
 import net.minecraft.core.NonNullList
 import net.minecraft.server.level.ServerPlayer
@@ -57,7 +63,6 @@ import net.minecraftforge.event.entity.player.PlayerEvent
 import net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent
 import net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent
 import net.minecraftforge.eventbus.api.SubscribeEvent
-import net.minecraftforge.fml.LogicalSide
 import net.minecraftforge.server.ServerLifecycleHooks
 import kotlin.jvm.optionals.getOrNull
 
@@ -84,6 +89,8 @@ object PlayerListener {
         var skillLockingPos: Vec3? = null,
         var lockingTargetBuffer: Entity? = null,
         var clientCamera: ClientCamera? = null,
+        var clientViewState: PlayerViewState? = null,
+        var cameraPathSession: CameraPathSession? = null,
         var scriptStoredTarget: Entity? = null,
         var chargeProgress: Float = 0f,
         var lastChargeProgress: Float = 0f,
@@ -186,11 +193,12 @@ object PlayerListener {
 
     @SubscribeEvent
     fun onPlayerLogin(event: PlayerLoggedInEvent) {
-        val player = event.entity as? ServerPlayer ?: return
+        handleEvent("PlayerLoggedInEvent") {
+            val player = event.entity as? ServerPlayer ?: return
+            ActionManager.initialize(player)
 
-        NetworkManager.sendToPlayer(S2CConfig(ServerConfig.defaultBlockAimWhileReloading.get()).create(), player)
+            NetworkManager.sendToPlayer(S2CConfig(ServerConfig.defaultBlockAimWhileReloading.get()).create(), player)
 
-        try {
             val scoreboard = ServerLifecycleHooks.getCurrentServer().scoreboard
             GLOBAL_VOLATILE_VARIABLES.variables.forEach {
                 val objective = scoreboard.getObjective("tacz_$it") ?: return@forEach
@@ -202,11 +210,7 @@ object PlayerListener {
             }
 
             PlayerExtrasServer.notify(player)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
 
-        try {
             val gunContext = getGun(player)
             if (gunContext != null) {
                 GunExtras.checkUUID(gunContext.gunItemStack)
@@ -223,16 +227,36 @@ object PlayerListener {
                 state.lastHotbar[it] = player.inventory.getItem(it)
                 SkillManager.trigger(TriggerType.ON_HOT_BAR, Context(player), it)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
-    fun onPlayerLogout(event: PlayerLoggedOutEvent) {
-        val player = event.entity as? ServerPlayer ?: return
+    fun onPlayerClone(event: PlayerEvent.Clone) {
+        val original = event.original as? ServerPlayer ?: return
+        ActionManager.discardPlayerInstance(original)
+        MissileManager.tvGuidancePlayers.remove(original)
+        playerStates.remove(original)
+    }
 
-        try {
+    @SubscribeEvent
+    fun onPlayerRespawn(event: PlayerEvent.PlayerRespawnEvent) {
+        val player = event.entity as? ServerPlayer ?: return
+        ActionManager.reinitialize(player)
+    }
+
+    @SubscribeEvent
+    fun onPlayerChangedDimension(event: PlayerEvent.PlayerChangedDimensionEvent) {
+        val player = event.entity as? ServerPlayer ?: return
+        ActionManager.reinitialize(player)
+        MissileManager.tvGuidancePlayers.remove(player)
+        CameraViewStateManager.clear(player)
+    }
+
+    @SubscribeEvent
+    fun onPlayerLogout(event: PlayerLoggedOutEvent) {
+        handleEvent("PlayerLoggedOutEvent") {
+            val player = event.entity as? ServerPlayer ?: return
+
             SkillManager.REVERSE_CHECK_MAP.remove(player)?.let {
                 it.forEach {
                     if (!it.skillMagicNumPair.skill.config.has(ReverseTriggerCondition.BYPASS_LEAVE) && !it.failed) {
@@ -250,7 +274,6 @@ object PlayerListener {
             }
             SkillManager.KEEP_TRIGGER_MAP.remove(player)
             SkillManager.CANCEL_SKILL_MAP.remove(player)
-            ActionManager.STATUS_MAP.remove(player)
             playerStates.remove(player)
             SkillManager.LOADED_SKILLS.flatMap { it.value }.forEach {
                 it.coolDownMap.remove(player)
@@ -258,11 +281,7 @@ object PlayerListener {
             GLOBAL_COOLDOWN_GROUP_MAP.entries.removeIf { it.key.first == player }
             ActionManager.reset(player)
             MissileManager.tvGuidancePlayers.remove(player)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
 
-        try {
             val scoreboard = ServerLifecycleHooks.getCurrentServer().scoreboard
             GLOBAL_VOLATILE_VARIABLES.variables.forEach {
                 val objective = scoreboard.getObjective("tacz_$it") ?: return@forEach
@@ -272,10 +291,8 @@ object PlayerListener {
                 storage.getScore(DataType.FLOAT, it)?.removeValue(player)
                 storage.getScore(DataType.STRING, it)?.removeValue(player)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
 
+        }
     }
 
     @SubscribeEvent
@@ -334,17 +351,15 @@ object PlayerListener {
 
     @SubscribeEvent
     fun onPlayerDeath(event: LivingDeathEvent) {
-        try {
+        handleEvent("LivingDeathEvent") {
             val player = event.entity as? ServerPlayer ?: return
             SkillManager.trigger(TriggerType.ON_DEATH, Context(player, event))
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onPlayerTick(event: PlayerTickEvent) {
-        try {
+        handleEvent("PlayerTickEvent") {
             if (event.phase != TickEvent.Phase.END) return
 
             val player = event.player
@@ -393,7 +408,7 @@ object PlayerListener {
 
             playerState.moving = moving
 
-            if (sprinting && ActionManager.shouldCancel(player, S2CCancelAction.Action.Sprint)) {
+            if (sprinting && ActionManager.shouldCancel(player, S2CActionLockState.Action.Sprint)) {
                 sprinting = false
                 player.isSprinting = false
             }
@@ -595,9 +610,6 @@ object PlayerListener {
 
 
             SkillManager.trigger(TriggerType.ON_PLAYER_TICK, Context(player))
-
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
@@ -615,13 +627,13 @@ object PlayerListener {
     fun onZoomChange(event: LivingEntityZoomSetEvent) {
         val player = event.entity as? ServerPlayer ?: return
 
-        val shouldCancel = ActionManager.shouldCancel(player, S2CCancelAction.Action.Zoom)
+        val shouldCancel = ActionManager.shouldCancel(player, S2CActionLockState.Action.Zoom)
         if (shouldCancel) {
             event.isCanceled = true
             return
         }
         SkillManager.trigger(TriggerType.ON_ZOOM_CHANGE, ZoomContext(player, event.zoomNumber))
-        if (ActionManager.shouldCancel(player, S2CCancelAction.Action.Zoom)) {
+        if (ActionManager.shouldCancel(player, S2CActionLockState.Action.Zoom)) {
             event.isCanceled = true
         }
     }
@@ -634,46 +646,42 @@ object PlayerListener {
 
     @SubscribeEvent
     fun onGunShoot(event: GunShootEvent) {
-        try {
+        handleEvent("GunShootEvent") {
             val player = event.shooter
             if (player !is ServerPlayer) return
             val playerState = getPlayerStates(player)
-            if (!playerState.forceShoot && ActionManager.shouldCancel(player, S2CCancelAction.Action.Fire)) {
+            if (!playerState.forceShoot && ActionManager.shouldCancel(player, S2CActionLockState.Action.Fire)) {
                 event.isCanceled = true
                 return
             }
             SkillManager.trigger(TriggerType.ON_SHOOT, Context(player))
-            if (!playerState.forceShoot && ActionManager.shouldCancel(player, S2CCancelAction.Action.Fire)) {
+            if (!playerState.forceShoot && ActionManager.shouldCancel(player, S2CActionLockState.Action.Fire)) {
                 event.isCanceled = true
                 return
             }
             playerState.forceShoot = false
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onBulletHitBlock(event: AmmoHitBlockEvent) {
-        try {
+        handleEvent("AmmoHitBlockEvent") {
             val bullet = event.ammo
             val player = bullet.owner
             if (player !is ServerPlayer) return
             SkillManager.trigger(TriggerType.ON_HIT_BLOCK, HitBlockContext(player, bullet, event.hitResult))
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onBulletHitEntity(event: EntityHurtByGunEvent.Pre) {
-        try {
+        handleEvent("EntityHurtByGunEvent.Pre") {
+            val bullet = event.bullet as? EntityKineticBullet ?: return
             val attacker = event.attacker ?: return
             val hurtEntity = event.hurtEntity ?: return
-            val bullet = event.bullet as EntityKineticBullet
 
             val isBlocked = if (hurtEntity is LivingEntity) {
-                GunShieldManager.shouldBlock(hurtEntity, event.bullet.getCenterPosition(), IAccessorBullet.getPenetration(bullet))
+                GunShieldManager.shouldBlock(hurtEntity, bullet.getCenterPosition(), IAccessorServerBullet.getPenetration(bullet))
             } else false
 
             val initialBlockingFactor = if (isBlocked && hurtEntity is LivingEntity) GunShieldManager.getBlockingFactor(hurtEntity) else 0.0f
@@ -687,7 +695,7 @@ object PlayerListener {
                     HitEntityContext(
                         attacker,
                         hurtEntity,
-                        event.bullet as EntityKineticBullet,
+                        bullet,
                         event
                     )
 
@@ -704,7 +712,7 @@ object PlayerListener {
                     HitByTargetContext(
                         hurtEntity,
                         attacker,
-                        event.bullet as EntityKineticBullet,
+                        bullet,
                         event
                     )
                 context.isBlocked = shouldBlock
@@ -716,7 +724,7 @@ object PlayerListener {
 
             if (isBlocked && hurtEntity is LivingEntity) {
                 if (hurtEntity is ServerPlayer) {
-                    val context = HitByTargetContext(hurtEntity, attacker, event.bullet as EntityKineticBullet, event)
+                    val context = HitByTargetContext(hurtEntity, attacker, bullet, event)
                     context.isBlocked = shouldBlock
                     SkillManager.trigger(TriggerType.ON_SHIELD_BLOCK_BULLET, context)
                     shouldBlock = context.isBlocked == true
@@ -732,14 +740,12 @@ object PlayerListener {
                     GunShieldManager.dispatchBlock(hurtEntity, event.baseAmount, blockingFactor)
                 }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onBulletExplosionHitEntity(baseEvent: BulletExplosionHurtEvent) {
-        try {
+        handleEvent("BulletExplosionHurtEvent") {
             val event = baseEvent.event
             val attacker = event.attacker ?: return
             val hurtEntity = event.hurtEntity ?: return
@@ -757,14 +763,12 @@ object PlayerListener {
 
             if (event.isCanceled)
                 baseEvent.isCanceled = true
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onBulletExplosionKillEntity(baseEvent: BulletExplosionKillEvent) {
-        try {
+        handleEvent("BulletExplosionKillEvent") {
             val event = baseEvent.event
             val attacker = event.attacker ?: return
             val hurtEntity = event.hurtEntity ?: return
@@ -779,15 +783,13 @@ object PlayerListener {
                     )
                 SkillManager.trigger(TriggerType.ON_BULLET_EXPLOSION_KILL_ENTITY, context)
             }
-
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onBulletKillEntity(event: EntityKillByGunEvent) {
-        try {
+        handleEvent("EntityKillByGunEvent") {
+            val bullet = event.bullet as? EntityKineticBullet ?: return
             val attacker = event.attacker ?: return
             val hurtEntity = event.killedEntity ?: return
 
@@ -796,9 +798,9 @@ object PlayerListener {
                     HitEntityContext(
                         attacker,
                         hurtEntity,
-                        event.bullet as EntityKineticBullet,
+                        bullet,
                         EntityHurtByGunEvent.Pre(
-                            event.bullet,
+                            bullet,
                             hurtEntity,
                             attacker,
                             event.gunId,
@@ -812,81 +814,47 @@ object PlayerListener {
                     )
                 SkillManager.trigger(TriggerType.ON_KILL_ENTITY, context)
             }
-
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onReload(event: GunReloadEvent) {
-        try {
+        handleEvent("GunReloadEvent") {
             val player = event.entity as? ServerPlayer ?: return
             SkillManager.trigger(TriggerType.ON_PRE_RELOAD, Context(player))
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onMelee(event: GunMeleeEvent) {
-        try {
+        handleEvent("GunMeleeEvent") {
             val player = event.shooter as? ServerPlayer ?: return
             SkillManager.trigger(TriggerType.ON_MELEE_ATTACK, Context(player))
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onMeleeHit(event: MeleeHitEvent) {
-        try {
+        handleEvent("MeleeHitEvent") {
             val player = event.user as? ServerPlayer ?: return
-            val hurtEvent = EntityHurtByGunEvent.Pre(
-                null,
-                event.target,
-                player,
-                null,
-                null,
-                event.damage,
-                null,
-                false,
-                1.0f,
-                LogicalSide.SERVER
-            )
+            val hurtEvent = MeleeDamageEvent(player, event.target, event.damage)
             SkillManager.trigger(TriggerType.ON_MELEE_HIT, HitEntityContext(player, event.target, null, hurtEvent))
             event.damage = hurtEvent.baseAmount
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onMeleeKill(event: MeleeKillEvent) {
-        try {
+        handleEvent("MeleeKillEvent") {
             val player = event.user as? ServerPlayer ?: return
-            val hurtEvent = EntityHurtByGunEvent.Pre(
-                null,
-                event.target,
-                player,
-                null,
-                null,
-                event.damage,
-                null,
-                false,
-                1.0f,
-                LogicalSide.SERVER
-            )
+            val hurtEvent = MeleeDamageEvent(player, event.target, event.damage)
             SkillManager.trigger(TriggerType.ON_MELEE_KILL, HitEntityContext(player, event.target, null, hurtEvent))
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onBulletDiscard(event: BulletDiscardEvent) {
-        try {
-
+        handleEvent("BulletDiscardEvent") {
             val player = event.bullet.owner as? ServerPlayer ?: return
 
             SkillManager.trigger(
@@ -894,41 +862,35 @@ object PlayerListener {
                 BulletContext(player, event.bullet)
             )
 
-            val bulletData = (event.bullet as IAccessorBullet).`taczexpands$getBulletExtraData`().bulletData ?: return
+            val bulletData = (event.bullet as IAccessorServerBullet).`taczexpands$getBulletExtraData`().bulletData ?: return
             if (IAccessorBulletData.getBulletExtraHolder(bulletData).missileData.guidanceType.isRemoteCamera) {
                 MissileManager.tvGuidancePlayers.remove(player)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onBulletPenetrate(event: BulletPenetrateEvent) {
-        try {
+        handleEvent("BulletPenetrateEvent") {
             val player = event.bullet.owner as? ServerPlayer ?: return
-
             SkillManager.trigger(
                 TriggerType.ON_BULLET_PENETRATE,
                 BulletContext(player, event.bullet)
             )
-        } catch (e: Exception) {
         }
     }
 
     @SubscribeEvent
     fun onSwitchFireMode(event: GunFireSelectEvent) {
-        try {
+        handleEvent("GunFireSelectEvent") {
             val player = event.shooter as? ServerPlayer ?: return
             SkillManager.trigger(TriggerType.ON_SWITCH_FIREMODE, Context(player))
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onFire(event: GunFireEvent) {
-        try {
+        handleEvent("GunFireEvent") {
             val player = event.shooter as? ServerPlayer ?: return
             val mainHand = event.gunItemStack
             val gunItem = ModItems.MODERN_KINETIC_GUN.get()
@@ -952,11 +914,7 @@ object PlayerListener {
             }
 
             val playerState = getPlayerStates(player)
-            if (!extraBulletData.missileData.isSimpleLocking && !GunExtras.getEnforcingSimpleLocking(mainHand)) {
-                playerState.let { it.lockingTargetBuffer = it.skillLockingTarget }
-            } else {
-                playerState.lockingTargetBuffer = MissileManager.getPlayerLockingTarget(player, true)
-            }
+            playerState.lockingTargetBuffer = LockingTargetResolver.resolve(player, LockingTargetResolver.Mode.EFFECTIVE, false)
 
             if (playerState.lockingTargetBuffer == null) {
                 playerState.lockingTargetBuffer = playerState.scriptStoredTarget
@@ -971,34 +929,27 @@ object PlayerListener {
             }
 
             playerState.scriptStoredTarget = null
-
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onBulletSpawn(event: BulletSpawnEvent) {
-        try {
+        handleEvent("BulletSpawnEvent") {
             val player = event.bullet.owner as? ServerPlayer ?: return
             SkillManager.trigger(TriggerType.ON_BULLET_SPAWN, BulletContext(player, event.bullet))
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
     @SubscribeEvent
     fun onEntityRemoveTracking(event: PlayerEvent.StopTracking) {
-        try {
+        handleEvent("PlayerEvent.StopTracking") {
             val player = event.entity as? ServerPlayer ?: return
             val bullet = event.target as? EntityKineticBullet ?: return
             if (bullet.owner != player) return
-            val bulletData = (bullet as IAccessorBullet).`taczexpands$getBulletExtraData`().bulletData ?: return
+            val bulletData = (bullet as IAccessorServerBullet).`taczexpands$getBulletExtraData`().bulletData ?: return
             if (IAccessorBulletData.getBulletExtraHolder(bulletData).missileData.guidanceType.isRemoteCamera) {
                 MissileManager.tvGuidancePlayers.remove(player)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 }

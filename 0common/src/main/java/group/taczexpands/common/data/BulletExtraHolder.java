@@ -31,6 +31,12 @@ public class BulletExtraHolder {
     @SerializedName("proximity_fuze_range")
     public float proximityFuzeRange = 0.0f;
 
+    @SerializedName("proximity_fuze_arming_ticks")
+    public int proximityFuzeArmingTicks = 0;
+
+    @SerializedName("proximity_fuze_arming_distance")
+    public float proximityFuzeArmingDistance = 0.0f;
+
     @SerializedName("proximity_fuze_min_speed")
     public float proximityFuzeMinSpeed = 0.0f;
 

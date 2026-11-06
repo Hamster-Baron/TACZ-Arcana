@@ -2,6 +2,7 @@ package group.taczexpands.client.mixin;
 
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.client.resource.GunDisplayInstance;
+import com.tacz.guns.client.resource.pojo.display.SoundData;
 import com.tacz.guns.client.sound.SoundPlayManager;
 import com.tacz.guns.resource.pojo.data.gun.GunData;
 import group.taczexpands.common.nbt.GunExtras;
@@ -92,92 +93,92 @@ public class MixinSoundPlayManager {
     }
 
     @Redirect(method = "playShootSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayShootSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayShootSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playSilenceSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlaySilenceSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlaySilenceSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playDryFireSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayDryFireSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayDryFireSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playReloadSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayReloadSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayReloadSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playInspectSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayInspectSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayInspectSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playBoltSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayBoltSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayBoltSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playDrawSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayDrawSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayDrawSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playPutAwaySound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayPutAwaySound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayPutAwaySound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playFireSelectSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayFireSelectSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayFireSelectSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playMeleeBayonetSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayMeleeBayonetSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayMeleeBayonetSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playMeleePushSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayMeleePushSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayMeleePushSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playMeleeStockSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayMeleeStockSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayMeleeStockSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playHeadHitSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayHeadHitSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayHeadHitSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playFleshHitSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayFleshHitSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayFleshHitSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
     @Redirect(method = "playKillSound", at = @At(value = "INVOKE",
-            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lnet/minecraft/resources/ResourceLocation;"))
-    private static ResourceLocation redirectPlayKillSound(GunDisplayInstance instance, String name) {
+            target = "Lcom/tacz/guns/client/resource/GunDisplayInstance;getSounds(Ljava/lang/String;)Lcom/tacz/guns/client/resource/pojo/display/SoundData;"))
+    private static SoundData redirectPlayKillSound(GunDisplayInstance instance, String name) {
         return hookGunDisplay(instance, name);
     }
 
@@ -190,7 +191,7 @@ public class MixinSoundPlayManager {
     }
 
     @Unique
-    private static ResourceLocation hookGunDisplay(GunDisplayInstance instance, String name) {
+    private static SoundData hookGunDisplay(GunDisplayInstance instance, String name) {
         var entity = taczexpands$savedEntity;
         taczexpands$savedEntity = null;
 

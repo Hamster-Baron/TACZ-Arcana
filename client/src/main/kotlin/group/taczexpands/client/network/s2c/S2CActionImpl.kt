@@ -1,5 +1,6 @@
 package group.taczexpands.client.network.s2c
 
+import com.tacz.guns.util.time.GunTime
 import com.tacz.guns.api.TimelessAPI
 import com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator
 import com.tacz.guns.entity.EntityKineticBullet
@@ -12,8 +13,10 @@ import group.taczexpands.client.gui.FrostbiteOverlay
 import group.taczexpands.client.gui.GunContextManager
 import group.taczexpands.client.gui.ScopeManager
 import group.taczexpands.client.input.InputManager
+import group.taczexpands.client.input.RemoteCameraSession
+import group.taczexpands.client.network.NetworkManager
 import group.taczexpands.client.input.ShakeManager
-import group.taczexpands.client.mixin.accessor.IAccessorFirstPersonRenderHandler
+import group.taczexpands.client.compat.sbm.SbmFirstPersonCompat
 import group.taczexpands.client.render.HookManager
 import group.taczexpands.client.util.Rotation
 import group.taczexpands.common.nbt.GunExtras
@@ -55,7 +58,7 @@ object S2CActionImpl {
                         if (packet.signal == 0) {
                             IClientPlayerGunOperator.fromLocalPlayer(player).draw(lastDrawStack)
                         } else if (packet.signal == 3) {
-                            IAccessorFirstPersonRenderHandler.`taczexpands$onItemChangedInSameSlot`(player.mainHandItem)
+                            SbmFirstPersonCompat.forceRefresh(player.mainHandItem)
                         } else {
                             AttachmentPropertyManager.postChangeEvent(player, player.mainHandItem)
                             val item = player.mainHandItem
@@ -104,27 +107,8 @@ object S2CActionImpl {
                     S2CAction.Action.BindCamera -> {
                         val player = Minecraft.getInstance().player ?: return@enqueueWork
                         val entityID = packet.signal
-                        val entity = player.level().getEntity(entityID) ?: return@enqueueWork
-
-                        InputManager.storeLocal()
-                        player.input = Input()
-                        Minecraft.getInstance().cameraEntity = entity
-
-                        val velocity = entity.deltaMovement
-                        if (velocity.lengthSqr() < 0.001) {
-                            val (yaw, pitch) = TACZExpandsClient.INSTANCE.vecToYawPitch(entity.getFixedLookAngle())
-                            InputManager.yaw = yaw
-                            InputManager.pitch = pitch
-                        } else {
-                            val (yaw, pitch) = TACZExpandsClient.INSTANCE.vecToYawPitch(velocity)
-                            InputManager.yaw = yaw
-                            InputManager.pitch = pitch
-                        }
-
-                        if (entity is EntityKineticBullet) {
-                            TACZExpandsClient.INSTANCE.lastCameraEntity = entity
-                        }
-                        InputManager.sendCameraInput = true
+                        val entity = player.level().getEntity(entityID) as? EntityKineticBullet ?: return@enqueueWork
+                        RemoteCameraSession.bind(entity)
                     }
 
                     S2CAction.Action.BindTarget -> {
@@ -166,9 +150,9 @@ object S2CActionImpl {
                         val player = Minecraft.getInstance().player ?: return@enqueueWork
                         if (packet.signal == 0) {
                             IClientPlayerGunOperator.fromLocalPlayer(player).shoot()
-                        } else {
-                            NetworkHandler.CHANNEL.sendToServer(ClientMessagePlayerShoot(System.currentTimeMillis() - IClientPlayerGunOperator.fromLocalPlayer(
-                                player).dataHolder.clientBaseTimestamp))
+                        } else if (NetworkManager.canSendPlayPacket()) {
+                            val timestamp = GunTime.nowMillis() - IClientPlayerGunOperator.fromLocalPlayer(player).dataHolder.clientBaseTimestamp
+                            NetworkHandler.CHANNEL.sendToServer(ClientMessagePlayerShoot(timestamp))
                         }
                     }
 
@@ -176,7 +160,7 @@ object S2CActionImpl {
                         val player = Minecraft.getInstance().player ?: return@enqueueWork
                         if (packet.signal == 0) {
                             IClientPlayerGunOperator.fromLocalPlayer(player).melee()
-                        } else {
+                        } else if (NetworkManager.canSendPlayPacket()) {
                             NetworkHandler.CHANNEL.sendToServer(ClientMessagePlayerMelee())
                         }
                     }

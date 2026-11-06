@@ -1,28 +1,23 @@
 package group.taczexpands.client.mixin;
 
-import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.client.resource.ClientAssetsManager;
-import com.tacz.guns.client.resource.manager.PackInfoManager;
-import com.tacz.guns.client.resource.pojo.PackInfo;
-import group.taczexpands.client.accessor.IAccessorClientAssetsManager;
-import group.taczexpands.client.mixin.accessor.IAccessorPackInfoManager;
+import com.tacz.guns.client.resource.pojo.model.BedrockModelPOJO;
+import group.taczexpands.client.config.ClientConfig;
+import group.taczexpands.client.render.model.CoplanarFaceSeparation;
+import net.minecraft.resources.ResourceLocation;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-
-import java.util.List;
-import java.util.Map;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(value = ClientAssetsManager.class, remap = false)
-public class MixinClientAssetsManager implements IAccessorClientAssetsManager {
-    @Shadow
-    private PackInfoManager packInfo;
-
-    @Override
-    public Map<String, PackInfo> taczexpands$getAllPackInfo() {
-        return ((IAccessorPackInfoManager)packInfo).getDataMap();
+public class MixinClientAssetsManager {
+    // Every gun, attachment, ammo and block model is built from a POJO handed out here.
+    @Inject(method = "getBedrockModelPOJO", at = @At("RETURN"))
+    private void taczexpands$separateCoplanarFaces(ResourceLocation id, CallbackInfoReturnable<BedrockModelPOJO> cir) {
+        BedrockModelPOJO pojo = cir.getReturnValue();
+        if (pojo != null && ClientConfig.INSTANCE.getCoplanarFaceSeparationNamespaces().get().contains(id.getNamespace())) {
+            CoplanarFaceSeparation.separateOnce(pojo);
+        }
     }
-
 }

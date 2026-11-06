@@ -31,12 +31,15 @@ data class SetHUD(
     val identifier: String? = null,
     val renderSpace: S2CAddHUD.RenderSpace = S2CAddHUD.RenderSpace.SCREEN,
     val alignment: S2CAddHUD.Alignment = S2CAddHUD.Alignment.CENTER,
+    val anchor: S2CAddHUD.Anchor = S2CAddHUD.Anchor.CENTER,
+    val pivot: S2CAddHUD.Anchor? = null,
     val x: ExpressionData = ExpressionData("0"),
     val y: ExpressionData = ExpressionData("0"),
     val z: ExpressionData = ExpressionData("0"),
     val scale: ExpressionData = ExpressionData("1.0"),
     val text: String? = null,
     val imagePath: String? = null,
+    val feed: String? = null,
     val imageWidth: Int = 256,
     val imageHeight: Int = 256,
     val remove: Boolean = false,
@@ -68,7 +71,8 @@ data class SetHUD(
                 val text = if (text != null) ExpressionHelper.initExpression(text, context, target).evaluate().stringValue else null
                 val imagePath = if (imagePath != null) ExpressionHelper.initExpression(imagePath, context, target).evaluate().stringValue else null
 
-                NetworkManager.sendToPlayer(S2CAddHUD(identifier, renderSpace, alignment, x, y, z, scale, text, imagePath, imageWidth, imageHeight).create(), target)
+                val feed = feed?.let { ExpressionHelper.initExpression(it, context, target).evaluate().stringValue }
+                NetworkManager.sendToPlayer(S2CAddHUD(identifier, renderSpace, alignment, x, y, z, scale, text, imagePath, imageWidth, imageHeight, anchor, pivot, feed).create(), target)
             }
         }
     }

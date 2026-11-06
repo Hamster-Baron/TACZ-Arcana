@@ -5,16 +5,19 @@ import com.tacz.guns.api.TimelessAPI
 import com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator
 import com.tacz.guns.api.entity.IGunOperator
 import com.tacz.guns.api.item.IGun
+import com.tacz.guns.client.gameplay.LocalPlayerReload
 import com.tacz.guns.client.input.ShootKey
 import com.tacz.guns.init.ModItems
 import group.taczexpands.client.gui.SelectAmmoScreen
 import group.taczexpands.client.mixin.accessor.IAccessorKeyMapping
 import group.taczexpands.client.network.NetworkManager
 import group.taczexpands.client.render.HookManager
+import group.taczexpands.common.TACZExpandsCommon.Companion.LOGGER
 import group.taczexpands.common.accessor.IAccessorGunData
 import group.taczexpands.common.data.HookData
 import group.taczexpands.common.network.c2s.C2SActionKey
 import group.taczexpands.common.network.v2.c2s.C2SMouseScroll
+import group.taczexpands.common.network.v2.s2c.S2CActionLockState
 import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent
@@ -206,9 +209,12 @@ object KeyInputs {
         return mc.isWindowActive
     }
 
+    private var synchronizedActionLocks: Set<S2CActionLockState.Action> = emptySet()
+    private var actionLockRevision = -1L
+
     var walkCancelTicks = 0
         get() {
-            if (field <= 0 && (hookStatus.moveLock || CameraManager.moveLock)) {
+            if (S2CActionLockState.Action.Walk in synchronizedActionLocks || field <= 0 && (hookStatus.moveLock || CameraManager.moveLock)) {
                 return 1
             }
             return field
@@ -216,21 +222,24 @@ object KeyInputs {
 
     var jumpCancelTicks = 0
         get() {
-            if (field <= 0 && (hookStatus.jumpLock || CameraManager.moveLock)) {
+            if (S2CActionLockState.Action.Jump in synchronizedActionLocks || field <= 0 && (hookStatus.jumpLock || CameraManager.moveLock)) {
                 return 1
             }
             return field
         }
 
     var aimCancelTicks = 0
+        get() = if (S2CActionLockState.Action.Aim in synchronizedActionLocks) 1 else field
 
     var fireCancelTicks = 0
+        get() = if (S2CActionLockState.Action.Fire in synchronizedActionLocks) 1 else field
 
     var missileFireCancelTicks = 0
+        get() = if (S2CActionLockState.Action.MissileFire in synchronizedActionLocks) 1 else field
 
     var reloadCancelTicks = 0
         get() {
-            if (field <= 0 && hookStatus.reloadLock) {
+            if (S2CActionLockState.Action.Reload in synchronizedActionLocks || field <= 0 && hookStatus.reloadLock) {
                 return 1
             }
             return field
@@ -238,7 +247,7 @@ object KeyInputs {
 
     var sprintCancelTicks = 0
         get() {
-            if (field <= 0 && hookStatus.runLock) {
+            if (S2CActionLockState.Action.Sprint in synchronizedActionLocks || field <= 0 && hookStatus.runLock) {
                 return 1
             }
             return field
@@ -246,7 +255,7 @@ object KeyInputs {
 
     var rotateCancelTicks = 0
         get() {
-            if (field <= 0 && CameraManager.rotateLock) {
+            if (S2CActionLockState.Action.Rotate in synchronizedActionLocks || field <= 0 && CameraManager.rotateLock) {
                 return 1
             }
             return field
@@ -255,7 +264,7 @@ object KeyInputs {
 
     var inventoryCancelTicks = 0
         get() {
-            if (field <= 0 && hookStatus.inventoryLock) {
+            if (S2CActionLockState.Action.Inventory in synchronizedActionLocks || field <= 0 && hookStatus.inventoryLock) {
                 return 1
             }
             return field
@@ -263,12 +272,15 @@ object KeyInputs {
 
     var inspectCancelTicks = 0
         get() {
-            if (field <= 0 && hookStatus.inspectLock) {
+            if (S2CActionLockState.Action.Inspect in synchronizedActionLocks || field <= 0 && hookStatus.inspectLock) {
                 return 1
             }
             return field
         }
 
+
+    var dropCancelTicks = 0
+        get() = if (S2CActionLockState.Action.Drop in synchronizedActionLocks) 1 else field
 
     fun cancelWalk(duration: Int) {
         walkCancelTicks = duration
@@ -310,6 +322,39 @@ object KeyInputs {
 
     fun cancelInspect(duration: Int) {
         inspectCancelTicks = duration
+    }
+
+    fun applyActionLockState(packet: S2CActionLockState) {
+        if (packet.revision <= actionLockRevision) return
+        val aimWasLocked = S2CActionLockState.Action.Aim in synchronizedActionLocks || aimCancelTicks > 0
+        val reloadWasLocked = S2CActionLockState.Action.Reload in synchronizedActionLocks || reloadCancelTicks > 0
+        actionLockRevision = packet.revision
+        synchronizedActionLocks = packet.actions
+        walkCancelTicks = 0
+        jumpCancelTicks = 0
+        aimCancelTicks = 0
+        fireCancelTicks = 0
+        missileFireCancelTicks = 0
+        reloadCancelTicks = 0
+        sprintCancelTicks = 0
+        rotateCancelTicks = 0
+        inventoryCancelTicks = 0
+        inspectCancelTicks = 0
+        dropCancelTicks = 0
+        val player = Minecraft.getInstance().player ?: return
+        if (!aimWasLocked && S2CActionLockState.Action.Aim in synchronizedActionLocks) {
+            IClientPlayerGunOperator.fromLocalPlayer(player).aim(false)
+        }
+        if (!reloadWasLocked && S2CActionLockState.Action.Reload in synchronizedActionLocks) {
+            try {
+                player.javaClass.getDeclaredField("tac\$reload").let {
+                    it.isAccessible = true
+                    (it.get(player) as LocalPlayerReload).cancelReload()
+                }
+            } catch (e: Exception) {
+                LOGGER.error("Failed to access TacZ field 'tac\$reload' for action lock", e)
+            }
+        }
     }
 
     var hookStatus = HookData()
@@ -396,6 +441,9 @@ object KeyInputs {
         if (inspectCancelTicks > 0) {
             inspectCancelTicks--
         }
+        if (dropCancelTicks > 0) {
+            dropCancelTicks--
+        }
     }
 
     private var lastShootKeyDown = false
@@ -410,12 +458,14 @@ object KeyInputs {
 
         val isShootKeyDown = ShootKey.SHOOT_KEY.isDown
         if (isShootKeyDown != lastShootKeyDown) {
-            if (isShootKeyDown) {
+            val sent = if (isShootKeyDown) {
                 NetworkManager.sendToServer(C2SActionKey(C2SActionKey.Action.SHOOT_DOWN))
             } else {
                 NetworkManager.sendToServer(C2SActionKey(C2SActionKey.Action.SHOOT_RELEASE))
             }
-            lastShootKeyDown = isShootKeyDown
+            if (sent) {
+                lastShootKeyDown = isShootKeyDown
+            }
         }
 
         val mc = Minecraft.getInstance()
@@ -442,14 +492,25 @@ object KeyInputs {
         rotateCancelTicks = 0
         inventoryCancelTicks = 0
         inspectCancelTicks = 0
+        dropCancelTicks = 0
+        synchronizedActionLocks = emptySet()
+        actionLockRevision = -1L
+        lastShootKeyDown = false
+        lastJumpKeyDown = false
     }
 
     fun onHandleKeybinds() {
         val options = Minecraft.getInstance().options
+        if (RemoteCameraSession.isActive) {
+            (options.keyTogglePerspective as IAccessorKeyMapping).release()
+        }
         if (inventoryCancelTicks > 0) {
             (options.keyPickItem as IAccessorKeyMapping).release()
             (options.keySwapOffhand as IAccessorKeyMapping).release()
             options.keyHotbarSlots.forEach { (it as IAccessorKeyMapping).release() }
+        }
+        if (dropCancelTicks > 0) {
+            (options.keyDrop as IAccessorKeyMapping).release()
         }
     }
 }

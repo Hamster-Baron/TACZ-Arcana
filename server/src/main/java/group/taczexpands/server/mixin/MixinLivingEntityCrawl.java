@@ -24,13 +24,13 @@ public class MixinLivingEntityCrawl {
     @Unique
     private boolean taczexpands$lastCrawling = false;
 
-    @Inject(method = "tickCrawling", at = @At("HEAD"))
-    private void onPreTickCrawling(CallbackInfo ci) {
+    @Inject(method = "setCrawling", at = @At("HEAD"))
+    private void onPreSetCrawling(boolean crawling, CallbackInfo ci) {
         taczexpands$lastCrawling = this.data.isCrawling;
     }
 
-    @Inject(method = "setCrawlPose", at = @At("TAIL"))
-    private void onPostSetCrawlPose(CallbackInfo ci) {
+    @Inject(method = "setCrawling", at = @At("TAIL"))
+    private void onPostSetCrawling(boolean crawling, CallbackInfo ci) {
         if (taczexpands$lastCrawling != this.data.isCrawling) {
             MinecraftForge.EVENT_BUS.post(new LivingEntityCrawlSetEvent(this.shooter, this.data.isCrawling));
         }

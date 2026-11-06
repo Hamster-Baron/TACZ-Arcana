@@ -203,13 +203,26 @@ object GunContextManager {
     }
 
     private fun hasAmmoModelElement(input: BedrockPart, groupPrefix: String, element: String): Boolean {
-        return getRootPart(input).walk().any {
-            it.name == groupPrefix + element
-        }
+        return hasAmmoModelName(getRootPart(input), groupPrefix + element)
     }
 
     private fun getRootPart(input: BedrockPart): BedrockPart {
-        return generateSequence(input) { it.parent }.last()
+        var root = input
+        while (true) {
+            val parent = root.parent ?: return root
+            root = parent
+        }
+    }
+
+    private fun hasAmmoModelName(part: BedrockPart, name: String): Boolean {
+        if (name.equals(part.name)) return true
+        val children = part.children
+        var index = 0
+        while (index < children.size) {
+            if (hasAmmoModelName(children[index], name)) return true
+            index++
+        }
+        return false
     }
 
     private fun BedrockPart.walk(): Sequence<BedrockPart> = sequence {

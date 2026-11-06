@@ -6,6 +6,7 @@ import group.taczexpands.server.config.action.base.ListPrepareData
 import group.taczexpands.server.config.action.base.PrepareData
 import group.taczexpands.server.config.action.base.SelectorPrepareData
 import group.taczexpands.server.config.action.base.toData
+import group.taczexpands.server.config.action.base.performAction
 import group.taczexpands.server.config.create
 import group.taczexpands.server.context.Context
 import group.taczexpands.server.expression.ExpressionData
@@ -39,7 +40,7 @@ data class Timer(
             var until = data.dataList[1].expression.get(context, target).numberValue.toInt()
 
             val taskBlock: (ScheduledTask) -> Unit = {
-                action.perform(skill, context)
+                action.performAction(skill, context)
             }
 
             if (recalculateEveryTick) {

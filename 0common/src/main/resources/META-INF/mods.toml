@@ -10,6 +10,13 @@ license = "${mod_license}"
     description = '''${mod_description}'''
 
 [[dependencies."${mod_id}"]]
+    modId = "tacz"
+    mandatory = true
+    versionRange = "[${tacz_version},)"
+    ordering = "AFTER"
+    side = "BOTH"
+
+[[dependencies."${mod_id}"]]
     modId = "forge"
     mandatory = true
     versionRange = "${forge_version_range}"

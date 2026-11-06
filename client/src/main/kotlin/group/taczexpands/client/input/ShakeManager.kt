@@ -3,6 +3,7 @@ package group.taczexpands.client.input
 import com.tacz.guns.api.entity.IGunOperator
 import group.taczexpands.client.util.Shake
 import group.taczexpands.common.accessor.IAccessorGunData
+import group.taczexpands.common.nbt.GunExtras
 import net.minecraft.client.Minecraft
 
 object ShakeManager {
@@ -23,7 +24,8 @@ object ShakeManager {
             return
         }
 
-        val gunExtra = IAccessorGunData.getExtraHolder(player.mainHandItem) ?: let {
+        val gun = player.mainHandItem
+        val gunExtra = IAccessorGunData.getExtraHolder(gun) ?: let {
             aimShake = null
             return
         }
@@ -37,19 +39,20 @@ object ShakeManager {
             return
         }
 
-        if (aimShake == null) {
-            aimShake = Shake(
-                data.amplitudeYRot,
-                data.amplitudeXRot,
-                24 * 60 * 60 * 1000L,
-                data.frequencyHz,
-                data.randomness,
-                data.dynamicPhaseOffset,
-                data.phaseOffsetYRot,
-                data.phaseOffsetXRot,
-                data.delay
-            )
-        }
+        val shake = aimShake ?: Shake(
+            data.amplitudeYRot,
+            data.amplitudeXRot,
+            24 * 60 * 60 * 1000L,
+            data.frequencyHz,
+            data.randomness,
+            data.dynamicPhaseOffset,
+            data.phaseOffsetYRot,
+            data.phaseOffsetXRot,
+            data.delay
+        ).also { aimShake = it }
+        shake.amplitudeXRot = data.amplitudeXRot * GunExtras.getAimShakeXModifier(player, gun)
+        shake.amplitudeYRot = data.amplitudeYRot * GunExtras.getAimShakeYModifier(player, gun)
+        shake.frequencyHz = data.frequencyHz * GunExtras.getAimShakeFrequencyModifier(player, gun)
     }
 
     fun add(shake: Shake) {

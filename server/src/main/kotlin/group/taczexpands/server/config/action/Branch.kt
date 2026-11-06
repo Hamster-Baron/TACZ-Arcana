@@ -2,6 +2,7 @@ package group.taczexpands.server.config.action
 
 import group.taczexpands.server.config.action.base.Action
 import group.taczexpands.server.config.action.base.PrepareData
+import group.taczexpands.server.config.action.base.performAction
 import group.taczexpands.server.config.condition.ChainCondition
 import group.taczexpands.server.context.Context
 import group.taczexpands.server.skill.Skill
@@ -22,7 +23,7 @@ data class Branch(
 
     override fun execute(skill: Skill, context: Context, data: PrepareData) {
         if (chainCondition.check(context))
-            succeeded?.perform(skill, context)
-        else failed?.perform(skill, context)
+            succeeded?.performAction(skill, context)
+        else failed?.performAction(skill, context)
     }
 }

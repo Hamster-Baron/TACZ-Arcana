@@ -1,7 +1,9 @@
 package group.taczexpands.client.gui
 
 import group.taczexpands.client.network.NetworkManager
+import group.taczexpands.common.TACZExpandsCommon.Companion.LOGGER
 import group.taczexpands.common.network.c2s.C2SGetVariable
+import java.util.IllegalFormatException
 
 object VariableManager {
     class VariableResult(val value: String, val lastUpdated: Long) {
@@ -20,21 +22,21 @@ object VariableManager {
         cachedVariables.clear()
     }
 
+    private fun request(variable: String) {
+        if (!fetchingVariables.contains(variable) && NetworkManager.sendToServer(C2SGetVariable(variable))) {
+            fetchingVariables.add(variable)
+        }
+    }
+
     fun get(variable: String): String {
         val name = variable
         if (!cachedVariables.containsKey(name)) {
-            if (!fetchingVariables.contains(name)) {
-                fetchingVariables.add(name)
-                NetworkManager.sendToServer(C2SGetVariable(name))
-            }
+            request(name)
             return "获取中"
         } else {
             val result = cachedVariables[name]!!
             if (System.currentTimeMillis() - result.lastUpdated > 5000) {
-                if (!fetchingVariables.contains(name)) {
-                    fetchingVariables.add(name)
-                    NetworkManager.sendToServer(C2SGetVariable(name))
-                }
+                request(name)
             }
             return result.value
         }
@@ -42,18 +44,14 @@ object VariableManager {
 
     fun invalidate(variable: String) {
         val name = variable
-        if (cachedVariables.containsKey(name) && !fetchingVariables.contains(name)) {
-            fetchingVariables.add(name)
-            NetworkManager.sendToServer(C2SGetVariable(name))
+        if (cachedVariables.containsKey(name)) {
+            request(name)
         }
     }
 
     fun invalidateAll() {
         cachedVariables.keys.forEach { name ->
-            if (!fetchingVariables.contains(name)) {
-                fetchingVariables.add(name)
-                NetworkManager.sendToServer(C2SGetVariable(name))
-            }
+            request(name)
         }
     }
 
@@ -87,8 +85,8 @@ object VariableManager {
                         value
                     }
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (e: IllegalFormatException) {
+                LOGGER.error("Failed to format variable '{}' with precision '{}'", variableName, decimalPlaces, e)
                 if(!defaultValue.isNullOrEmpty()) defaultValue else "错误"
             }
 
