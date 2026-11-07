@@ -36,6 +36,57 @@ import net.minecraftforge.items.ItemHandlerHelper
 import kotlin.jvm.optionals.getOrNull
 
 object GunManager {
+    /** Addon owns the inventory transaction; finish Arcana state after its successful mutation. */
+    fun completeAttachmentChange(before: ItemStack, gunItem: ItemStack, player: ServerPlayer, attachmentType: AttachmentType) {
+        val iGun = IGun.getIGunOrNull(gunItem) ?: return
+        val oldAttachment = iGun.getAttachment(before, attachmentType)
+        val newAttachment = iGun.getAttachment(gunItem, attachmentType)
+        var shouldRefresh = false
+        var shouldTriggerSwitch = false
+        if (attachmentType == AttachmentType.GRIP) {
+            val oldUnderBarrel = getUnderBarrel(before)
+            val newUnderBarrel = getUnderBarrel(gunItem)
+            if (!isSameUnderBarrel(oldUnderBarrel, newUnderBarrel)) {
+                shouldRefresh = oldUnderBarrel != null || newUnderBarrel != null
+                if (oldUnderBarrel != null) {
+                    shouldTriggerSwitch = unloadActiveUnderBarrelAmmo(iGun, before, player)
+                    setUsingUnderBarrel(gunItem, false)
+                    deleteUnderBarrelRootTag(gunItem)
+                }
+            }
+        }
+
+        val gunData = TimelessAPI.getCommonGunIndex(iGun.getGunId(before)).getOrNull()?.gunData
+        val prevAmmoId = gunData?.let { IAccessorGunData.getCurrentAmmoId(it, before) }
+        val prevBaseAmmo = gunData?.let { IAccessorGunData.getCurrentBaseAmmo(it, before) }
+        val currentAmmoId = gunData?.let { IAccessorGunData.getCurrentAmmoId(it, gunItem) }
+        val currentBaseAmmo = gunData?.let { IAccessorGunData.getCurrentBaseAmmo(it, gunItem) }
+        val switchAmmo = prevAmmoId != null && !IAccessorGunData.isValidAmmoId(gunData, gunItem, prevAmmoId)
+                || prevBaseAmmo != null && prevBaseAmmo.ammoId == prevAmmoId && prevBaseAmmo.isTriggerBaseAmmoReloadEvent
+                || !newAttachment.isEmpty && currentBaseAmmo != null && currentBaseAmmo.ammoId == currentAmmoId
+                && currentBaseAmmo.isTriggerBaseAmmoReloadEvent
+        if (attachmentType == AttachmentType.EXTENDED_MAG || switchAmmo) {
+            // Refund using the old attachment's ammo rules, then clear the committed gun once.
+            unloadAmmoForAttachmentChange(iGun, before, player, gunData, prevAmmoId)
+            iGun.setCurrentAmmoCount(gunItem, 0)
+            iGun.setBulletInBarrel(gunItem, false)
+        }
+        if (switchAmmo) setCurrentExtraAmmoId(gunItem, null)
+        AttachmentPropertyManager.postChangeEvent(player, gunItem)
+        if (switchAmmo) SkillManager.trigger(TriggerType.ON_SWITCH_AMMO, Context(player))
+        if (shouldRefresh) {
+            sendToPlayer(S2CAction(S2CAction.Action.Draw, 0), player)
+            sendToPlayer(S2CAction(S2CAction.Action.Draw, 3), player)
+        }
+        if (shouldTriggerSwitch) {
+            SkillManager.triggerReverse(TriggerType.ON_SWITCH_TO_UNDER_BARREL, Context(player), -1)
+            SkillManager.trigger(TriggerType.ON_SWITCH_TO_GUN, Context(player), -1)
+        }
+        val prevId = IAttachment.getIAttachmentOrNull(oldAttachment)?.getAttachmentId(oldAttachment)?.toString()
+        val newId = IAttachment.getIAttachmentOrNull(newAttachment)?.getAttachmentId(newAttachment)?.toString()
+        SkillManager.trigger(TriggerType.ON_CHANGE_ATTACHMENT, AttachmentChangeContext(player, prevId, newId), -1)
+    }
+
     fun refitAttachment(attachmentType: AttachmentType, attachmentItem: ItemStack, attachmentSlotIndex: Int?, gunItem: ItemStack, player: ServerPlayer, enforce: Boolean = false, inventory: Inventory): Boolean {
         val iGun = IGun.getIGunOrNull(gunItem) ?: return false
         if (!enforce && !iGun.allowAttachment(gunItem, attachmentItem)) return false

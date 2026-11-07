@@ -2,8 +2,6 @@ package group.taczexpands.server.mixin;
 
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.network.message.ClientMessageUnloadAttachment;
-import group.taczexpands.server.compat.CompatHelper;
-import group.taczexpands.server.compat.taczaddon.TACZAddonCompat;
 import group.taczexpands.server.util.GunManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
@@ -34,7 +32,7 @@ public class MixinClientMessageUnloadAttachment {
         if (player == null) {
             return;
         }
-        Inventory inventory = CompatHelper.INSTANCE.hasTACZAddon() ? TACZAddonCompat.INSTANCE.getInventoryUnload(player.getInventory()) : player.getInventory();
+        Inventory inventory = player.getInventory();
         ItemStack gunItem = inventory.getItem(((MixinClientMessageUnloadAttachment) (Object) message).gunSlotIndex);
         var attachmentType = ((MixinClientMessageUnloadAttachment) (Object) message).attachmentType;
         GunManager.INSTANCE.unloadAttachment(attachmentType, gunItem, player, inventory);

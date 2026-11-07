@@ -22,7 +22,7 @@ dependencies {
 
     compileOnly fg.deobf("maven.modrinth:superb-warfare:0.8.8")
     compileOnly fg.deobf("maven.modrinth:tacz-tweaks:2.14.1")
-    compileOnly fg.deobf("maven.modrinth:taczaddon:1.1.6")
+    compileOnly fg.deobf("curse.maven:tacz-addon-1238419:9474721")
 
     jarJar("com.charleskorn.kaml:kaml:[0.104.0,0.105.0)") {
         jarJar.pin(it, "0.104.0")

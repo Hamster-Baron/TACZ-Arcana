@@ -4,10 +4,6 @@ import net.minecraftforge.fml.ModList
 import kotlin.jvm.optionals.getOrNull
 
 object CompatHelper {
-    fun hasTACZAddon(): Boolean {
-        return ModList.get().isLoaded("taczaddon")
-    }
-
     fun hasSuperbWarfare(): Boolean {
         return ModList.get().isLoaded("superbwarfare")
     }

@@ -27,7 +27,10 @@
     "accessor.IAccessorChunkMap",
     "accessor.IAccessorEntityKineticBullet",
     "accessor.IAccessorServerEntity",
-    "accessor.IAccessorTrackedEntity"
+    "accessor.IAccessorTrackedEntity",
+    "compat.MixinAddonLiberatedInstall",
+    "compat.MixinAddonLiberatedUnload",
+    "compat.MixinAddonExternalRefit"
   ],
   "client": [
   ],
